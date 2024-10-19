@@ -1,94 +1,164 @@
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+import pandas as pd
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.compose import ColumnTransformer
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
+from sklearn.pipeline import Pipeline
+from sklearn.feature_selection import SequentialFeatureSelector
 import matplotlib.pyplot as plt
 
+class LinearRegression:
+    def __init__(self, learning_rate=0.01, n_iterations=1000):
+        self.learning_rate = learning_rate
+        self.n_iterations = n_iterations
+        self.weights = None
+        self.bias = None
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self.weights = np.zeros(n_features)
+        self.bias = 0
+
+        for i in range(self.n_iterations):
+            y_predicted = np.dot(X, self.weights) + self.bias
+            error = y_predicted - y
+
+            dw = (1 / n_samples) * np.dot(X.T, error)
+            db = (1 / n_samples) * np.sum(error)
+
+            self.weights -= self.learning_rate * dw
+            self.bias -= self.learning_rate * db
+
+            if i % 100 == 0:
+                loss = (1 / (2 * n_samples)) * np.sum(error ** 2)
+                #print(f"Iteration {i}: Loss = {loss}")
+
+    def predict(self, X):
+        return np.dot(X, self.weights) + self.bias
+
+def preprocess_data(X):
+    # Define the preprocessing steps
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight']
+    categorical_features = ['profession']
+
+    numeric_transformer = StandardScaler()
+    categorical_transformer = OneHotEncoder()
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+
+    # Apply the transformations
+    X_preprocessed = preprocessor.fit_transform(X)
+    return X_preprocessed, numeric_features + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features))
+
+def map_ordinal_features(X):
+    ordinal_mapping = {
+        'Very Low': 1,
+        'Low': 2,
+        'Moderate': 3,
+        'High': 4,
+        'Very High': 5
+    }
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    for feature in ordinal_features:
+        X[feature] = X[feature].map(ordinal_mapping)
+    return X
+
 def compute_rmse(predict, target):
-    diff = predict- np.squeeze(target) #target es Xw
-    return np.sqrt((diff**2).sum()/len(target)) #len(target) es P
-
-X_train = pd.read_csv(r'..\data_students\labeled_data\X_train.csv')
-X_test = pd.read_csv(r'..\data_students\labeled_data\X_test.csv')
-y_train = pd.read_csv(r'..\data_students\labeled_data\y_train.csv', header=None).values.ravel()
-y_test = pd.read_csv(r'..\data_students\labeled_data\y_test.csv', header=None).values.ravel()
-
-# Drop the last column image file
-X_train = X_train.iloc[:, :-1]
-X_test = X_test.iloc[:, :-1]
+    diff = predict - np.squeeze(target)
+    return np.sqrt((diff ** 2).sum() / len(target))
 
 
-categorical_features = X_train.select_dtypes(include=['object', 'category']).columns.tolist()
-numerical_features = X_train.select_dtypes(include=[np.number]).columns.tolist()
+def forward_search(X, y, model, k_features):
+    n_features = X.shape[1]
+    selected_features = []
+    remaining_features = list(range(n_features))
+    best_rmse = float('inf')
 
-# Define a preprocessor with OneHotEncoder for categorical features and StandardScaler for numerical features
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', StandardScaler(), numerical_features),
-        ('cat', OneHotEncoder(drop='first'), categorical_features)
-    ]
-)
+    while len(selected_features) < k_features:
+        best_feature = None
+        for feature in remaining_features:
+            current_features = selected_features + [feature]
+            X_train_subset = X[:, current_features]
+            model.fit(X_train_subset, y)
+            predictions = model.predict(X_train_subset)
+            rmse = compute_rmse(predictions, y)
+            if rmse < best_rmse:
+                best_rmse = rmse
+                best_feature = feature
+        selected_features.append(best_feature)
+        remaining_features.remove(best_feature)
+        print(f"Selected features: {selected_features}, RMSE: {best_rmse}")
 
+    return selected_features , best_rmse
 
-X_train_preprocessed = preprocessor.fit_transform(X_train)
+def main():
+    # Load the data (adjust paths as needed)
+    X_train = pd.read_csv(r'..\data_students\labeled_data\X_train.csv')
+    X_test = pd.read_csv(r'..\data_students\labeled_data\X_test.csv')
+    y_train = pd.read_csv(r'..\data_students\labeled_data\y_train.csv', header=None).values.ravel()
+    y_test = pd.read_csv(r'..\data_students\labeled_data\y_test.csv', header=None).values.ravel()
 
-X_test_preprocessed = preprocessor.transform(X_test)
+    # Drop non-numeric columns
+    X_train = X_train.drop(columns=['img_filename'])
+    X_test = X_test.drop(columns=['img_filename'])
 
-# Create a DataFrame for correlation analysis
-# Get the names of the one-hot encoded features
-one_hot_feature_names = preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)
+    # Map ordinal features to numeric values
+    X_train = map_ordinal_features(X_train)
+    X_test = map_ordinal_features(X_test)
 
-# Combine numerical and one-hot feature names
-all_feature_names = numerical_features + list(one_hot_feature_names)
+    # Separate numeric and non-numeric columns
+    numeric_cols = X_train.select_dtypes(include=[np.number]).columns
+    non_numeric_cols = X_train.select_dtypes(exclude=[np.number]).columns
 
-# Create a DataFrame for the training set with the correct feature names
-X_train_df = pd.DataFrame(X_train_preprocessed, columns=all_feature_names)
+    # Handle NaN values in numeric columns
+    X_train[numeric_cols] = X_train[numeric_cols].fillna(X_train[numeric_cols].mean())
+    X_test[numeric_cols] = X_test[numeric_cols].fillna(X_test[numeric_cols].mean())
 
-# Calculate the correlation with the target variable
-correlation_with_target = X_train_df.corrwith(pd.Series(y_train))
+    # Handle NaN values in non-numeric columns
+    X_train[non_numeric_cols] = X_train[non_numeric_cols].fillna(X_train[non_numeric_cols].mode().iloc[0])
+    X_test[non_numeric_cols] = X_test[non_numeric_cols].fillna(X_test[non_numeric_cols].mode().iloc[0])
 
-# Select the top 7 features based on absolute correlation with the target
-top_features = correlation_with_target.abs().nlargest(7).index
+    # Preprocess the data
+    X_train_preprocessed, feature_names = preprocess_data(X_train)
+    X_test_preprocessed, _ = preprocess_data(X_test)
 
-# Get the indices of the selected features
-selected_indices = [X_train_df.columns.get_loc(feature) for feature in top_features]
+    # Feature selection using forward search
+    model = LinearRegression(learning_rate=0.01, n_iterations=1000)
+    best_features = []
+    best_rmse = float('inf')
+    for i in range(1, 10):
+        selected_features, acum_rmse = forward_search(X_train_preprocessed, y_train, model, k_features=i)
+        if acum_rmse < best_rmse:
+            best_rmse = acum_rmse
+            best_features = selected_features
 
-# Filter training and test sets to include only selected features
-X_train_selected = X_train_preprocessed[:, selected_indices]
-X_test_selected = X_test_preprocessed[:, selected_indices]
+    best_feature_names = [feature_names[i] for i in best_features]
+    print(f"Best features: {best_feature_names}, Best RMSE: {best_rmse}")
 
-# Initialize and train the linear regression model
-model = LinearRegression()
-model.fit(X_train_selected, y_train)
+    # Select the top features
+    X_train_selected = X_train_preprocessed[:, best_features]
+    X_test_selected = X_test_preprocessed[:, best_features]
 
-# Predictions on the test set
-y_pred_test = model.predict(X_test_selected)
+    # Initialize and train the model
+    model.fit(X_train_selected, y_train)
 
-test_rmse = compute_rmse(y_pred_test, y_test)
-test_r2 = r2_score(y_test, y_pred_test)
+    # Make predictions
+    predictions = model.predict(X_test_selected)
+    #print("Predictions:", predictions)
 
-print(f"Test RMSE: {test_rmse}")
-print(f"Test R^2: {test_r2}")
+    # Evaluate the model using RMSE
+    rmse = compute_rmse(predictions, y_test)
+    print(f"Root Mean Squared Error (RMSE): {rmse}")
 
-# Plotting true vs. predicted values
-plt.figure(figsize=(8, 6))
-plt.scatter(y_test, y_pred_test, alpha=0.6, color='blue')
-plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], '--r', linewidth=2)
-plt.xlabel("True Risk")
-plt.ylabel("Predicted Risk")
-plt.title("Predicted vs. Actual Risk on Test Set")
-plt.grid(True)
-plt.show()
+    # Visualize the predictions
+    plt.scatter(y_test, predictions)
+    plt.xlabel("Actual Values")
+    plt.ylabel("Predicted Values")
+    plt.title("Actual vs Predicted Values")
+    plt.show()
 
-# Residual plot
-residuals = y_test - y_pred_test
-plt.figure(figsize=(8, 6))
-plt.hist(residuals, bins=30, edgecolor='k', alpha=0.7)
-plt.xlabel('Residuals')
-plt.ylabel('Frequency')
-plt.title('Distribution of Residuals (Test Set)')
-plt.grid(True)
-plt.show()
+if __name__ == "__main__":
+    main()
