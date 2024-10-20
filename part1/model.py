@@ -1,146 +1,150 @@
-import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+import pandas as pd
+from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import StandardScaler,  LabelEncoder
 from sklearn.compose import ColumnTransformer
-import matplotlib.pyplot as plt
-from sklearn.metrics import r2_score
-from sklearn.feature_selection import mutual_info_regression
+from sklearn.metrics import make_scorer
+
+class LinearRegression:
+    def __init__(self, learning_rate=0.01, n_iterations=1000):
+        self.learning_rate = learning_rate
+        self.n_iterations = n_iterations
+        self.weights = None
+        self.bias = 0
+
+    def fit(self, X, y):
+        n_samples, n_features = X.shape
+        self.weights = np.zeros(n_features)
+        self.bias = 0
+
+        for i in range(self.n_iterations):
+            y_predicted = np.dot(X, self.weights) + self.bias
+            error = y_predicted - y
+
+            dw = (1 / n_samples) * np.dot(X.T, error)
+            db = (1 / n_samples) * np.sum(error)
+
+            self.weights -= self.learning_rate * dw
+            self.bias -= self.learning_rate * db
+
+            if i % 100 == 0:
+                loss = (1 / (2 * n_samples)) * np.sum(error ** 2)
+                #print(f"Iteration {i}: Loss = {loss}")
+
+    def get_params(self, deep=True):
+        return {"learning_rate": self.learning_rate, "n_iterations": self.n_iterations}
+
+    def set_params(self, **params):
+        for key, value in params.items():
+            setattr(self, key, value)
+        return self
+
+    def score(self, X, y):
+        y_pred = self.predict(X)
+        u = np.sum((y - y_pred) ** 2)
+        v = np.sum((y - np.mean(y)) ** 2)
+        return 1 - (u / v)
+
+
+    def predict(self, X):
+        return np.dot(X, self.weights) + self.bias
+
+
+label_encoder = LabelEncoder()
+
+def preprocess_data(X):
+    # Define the preprocessing steps
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
+                        'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    
+    # Transform the categorical 'profession' column using the LabelEncoder
+    X['profession'] = label_encoder.fit_transform(X['profession'])
+    categorical_features = ['profession']
+
+    # Create a ColumnTransformer for the numerical features
+    numeric_transformer = StandardScaler()
+
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features)
+        ],
+        remainder='passthrough'  # Keep the transformed 'profession' column as-is
+    )
+
+    # Apply the transformations
+    X_preprocessed = preprocessor.fit_transform(X)
+    feature_names = numeric_features + categorical_features
+    return X_preprocessed, feature_names
+
+def map_ordinal_features(X):
+    ordinal_mapping = {
+        'Very Low': 1,
+        'Low': 2,
+        'Moderate': 3,
+        'High': 4,
+        'Very High': 5
+    }
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    for feature in ordinal_features:
+        X[feature] = X[feature].map(ordinal_mapping)
+    return X
 
 def compute_rmse(predict, target):
-    diff = predict - np.squeeze(target)  # target is Xw
-    return np.sqrt((diff ** 2).sum() / len(target))  # len(target) is P
+    diff = predict - np.squeeze(target)
+    return np.sqrt((diff ** 2).sum() / len(target))
 
-def gradient_descent(X_train, y_train, learning_rate, num_iterations, lambda_reg=0.1):
-    m = X_train.shape[0]  # Number of training samples
-    w = np.zeros(X_train.shape[1])  # Initialize weights
 
-    for i in range(num_iterations):
-        y_pred_train = X_train.dot(w)
-        error = y_pred_train - y_train
-        gradient = (1/m) * (X_train.T.dot(error) + lambda_reg * w)  # Add regularization term
-        w -= learning_rate * gradient
-
-    return w
-
-def find_best_hyperparams(X_train, y_train, X_val, y_val, learning_rates, num_iterations_list):
-    best_rmse = float('inf')
-    best_params = {'learning_rate': None, 'num_iterations': None}
-    best_weights = None
-
-    for learning_rate in learning_rates:
-        for num_iterations in num_iterations_list:
-            w = gradient_descent(X_train, y_train, learning_rate, num_iterations)
-            y_val_pred = X_val.dot(w)
-            val_rmse = compute_rmse(y_val_pred, y_val)
-
-            if val_rmse < best_rmse:
-                best_rmse = val_rmse
-                best_params['learning_rate'] = learning_rate
-                best_params['num_iterations'] = num_iterations
-                best_weights = w
-
-            print(f"Learning Rate: {learning_rate}, Num Iterations: {num_iterations}, Validation RMSE: {val_rmse}")
-
-    return best_params, best_weights
-
+# Create some synthetic data for demonstration
 # Load the data (adjust paths as needed)
 X_train = pd.read_csv(r'..\data_students\labeled_data\X_train.csv')
 X_test = pd.read_csv(r'..\data_students\labeled_data\X_test.csv')
 y_train = pd.read_csv(r'..\data_students\labeled_data\y_train.csv', header=None).values.ravel()
 y_test = pd.read_csv(r'..\data_students\labeled_data\y_test.csv', header=None).values.ravel()
 
-# Drop the last column containing the image file names from X
-X_train = X_train.iloc[:, :-1]
-X_test = X_test.iloc[:, :-1]
+# Drop non-numeric columns
+X_train = X_train.drop(columns=['img_filename'])
+X_test = X_test.drop(columns=['img_filename'])
+
+    
+# Map ordinal features to numeric values
+X_train = map_ordinal_features(X_train)
+X_test = map_ordinal_features(X_test)
+
+    # Separate numeric and non-numeric columns
+numeric_cols = X_train.select_dtypes(include=[np.number]).columns
+    #non_numeric_cols = X_train.select_dtypes(exclude=[np.number]).columns
 
 
-# Ensure y_train is a pandas Series
-y_train_series = pd.Series(y_train)
-
-# Ensure X_train contains only numeric columns
-X_train_numeric = X_train.select_dtypes(include=[np.number])
-
-# Calculate mutual information for each feature
-mi_scores = mutual_info_regression(X_train_numeric, y_train_series)
-
-# Create a DataFrame for mutual information scores
-mi_scores_df = pd.DataFrame({'Feature': X_train_numeric.columns, 'MI Score': mi_scores})
-
-# Select top features based on mutual information scores
-top_features = mi_scores_df.sort_values(by='MI Score', ascending=False).head(7)['Feature'].tolist()
-X_train_top = X_train[top_features]
-X_test_top = X_test[top_features]
-print(X_train_top.head())
-
-X_train_final, X_val, y_train_final, y_val = train_test_split(
-    X_train, y_train, test_size=0.2, random_state=42
-)
-
-categorical_features = [col for col in X_train_final.columns if X_train[col].dtype == 'object']
-numerical_features = [col for col in X_train_final.columns if X_train[col].dtype in [np.number]]
+    # Handle NaN values in numeric columns
+X_train[numeric_cols] = X_train[numeric_cols].fillna(X_train[numeric_cols].mean())
+X_test[numeric_cols] = X_test[numeric_cols].fillna(X_test[numeric_cols].mean())
 
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', StandardScaler(), numerical_features),
-        ('cat', OneHotEncoder(drop='first'), categorical_features)
-    ]
-)
+    # Preprocess the data
+X_train_preprocessed, feature_names = preprocess_data(X_train)
+X_test_preprocessed, _ = preprocess_data(X_test)
 
 
-X_train_final_preprocessed = preprocessor.fit_transform(X_train_final)
-X_val_preprocessed = preprocessor.transform(X_val)
 
-# add bias term
-X_train_final_preprocessed = np.c_[np.ones(X_train_final_preprocessed.shape[0]), X_train_final_preprocessed]
-X_val_preprocessed = np.c_[np.ones(X_val_preprocessed.shape[0]), X_val_preprocessed]
+# Define the model
+model = LinearRegression()
 
-# Define hyperparameter grid
-learning_rates = [0.0001, 0.001, 0.01]
-num_iterations_list = [100, 500, 1000]
+# Define the parameter grid
+param_grid = {
+    'learning_rate': [0.001, 0.01, 0.1],
+    'n_iterations': [500, 1000, 2000]
+}
 
-# Find the best hyperparameters
-best_params, best_weights = find_best_hyperparams(X_train_final_preprocessed, y_train_final, X_val_preprocessed, y_val, learning_rates, num_iterations_list)
+score = make_scorer(compute_rmse,greater_is_better=False)
+# Set up the GridSearchCV
+grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='score')
 
-print(f"Best Hyperparameters: {best_params}")
+# Fit the model
+grid_search.fit(X_train_preprocessed, y_train)
 
-# Evaluate the model on the validation set
-y_val_pred = X_val_preprocessed.dot(best_weights)
-val_rmse = compute_rmse(y_val_pred, y_val)
-val_r2 = r2_score(y_val, y_val_pred)
+# Get the best parameters
+best_params = grid_search.best_params_
+best_score = grid_search.best_score_
 
-print(f"Validation RMSE: {val_rmse}")
-print(f"Validation R^2: {val_r2}")
-
-# Step 4: Evaluate the model on the test set
-X_test_preprocessed = preprocessor.transform(X_test)
-X_test_preprocessed = np.c_[np.ones(X_test_preprocessed.shape[0]), X_test_preprocessed]
-y_test_pred = X_test_preprocessed.dot(best_weights)
-
-# Calculate test metrics
-test_rmse = compute_rmse(y_test_pred, y_test)
-test_r2 = r2_score(y_test, y_test_pred)
-
-print(f"Test RMSE: {test_rmse}")
-print(f"Test R^2: {test_r2}")
-
-# Plot the predictions vs. actual values for the test set
-plt.figure(figsize=(8, 6))
-plt.scatter(y_test, y_test_pred, alpha=0.6, color='blue')
-plt.plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], '--r', linewidth=2)
-plt.xlabel("Actual Risk")
-plt.ylabel("Predicted Risk")
-plt.title("Predicted vs. Actual Risk on Test Set")
-plt.grid(True)
-plt.show()
-
-# Residual plot for the test set
-residuals = y_test - y_test_pred
-plt.figure(figsize=(8, 6))
-plt.hist(residuals, bins=30, edgecolor='k', alpha=0.7)
-plt.xlabel('Residuals')
-plt.ylabel('Frequency')
-plt.title('Distribution of Residuals (Test Set)')
-plt.grid(True)
-plt.show()
+print("Best Hyperparameters:", best_params)
+print("Best Score (RMSE):", best_score)  # Lower is better
