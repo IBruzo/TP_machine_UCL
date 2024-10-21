@@ -4,6 +4,7 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.preprocessing import StandardScaler,  LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.metrics import make_scorer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 class LinearRegression:
     def __init__(self, learning_rate=0.01, n_iterations=1000):
@@ -53,30 +54,37 @@ class LinearRegression:
 label_encoder = LabelEncoder()
 
 def preprocess_data(X):
-    # Define the preprocessing steps
+    # Define the numeric features
     numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
-                        'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+                        'hemoglobin', 'height', 'potassium', 'vitamin D', 
+                        'weight', 'sarsaparilla', 'smurfberry liquor', 
+                        'smurfin donuts']
     
-    # Transform the categorical 'profession' column using the LabelEncoder
-    X['profession'] = label_encoder.fit_transform(X['profession'])
+    # Define the categorical features (just 'profession')
     categorical_features = ['profession']
 
-    # Create a ColumnTransformer for the numerical features
+    # Create transformers for numeric and categorical data
     numeric_transformer = StandardScaler()
+    categorical_transformer = OneHotEncoder(drop='first', sparse_output=False) # OneHotEncoder drops the first category to avoid multicollinearity
 
+    # Create a ColumnTransformer for preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', numeric_transformer, numeric_features)
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
         ],
-        remainder='passthrough'  # Keep the transformed 'profession' column as-is
+        remainder='passthrough'  # Keep any other columns as-is
     )
 
     # Apply the transformations
     X_preprocessed = preprocessor.fit_transform(X)
-    feature_names = numeric_features + categorical_features
+    
+    profession_categories = preprocessor.named_transformers_['cat'].get_feature_names_out(['profession'])
+    feature_names = numeric_features + list(profession_categories)
+    
     return X_preprocessed, feature_names
-
 def map_ordinal_features(X):
+
     ordinal_mapping = {
         'Very Low': 1,
         'Low': 2,
@@ -132,12 +140,12 @@ model = LinearRegression()
 # Define the parameter grid
 param_grid = {
     'learning_rate': [0.001, 0.01, 0.1],
-    'n_iterations': [500, 1000, 2000]
+    'n_iterations': [500, 1000, 2000,5000]
 }
 
 score = make_scorer(compute_rmse,greater_is_better=False)
 # Set up the GridSearchCV
-grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='score')
+grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring=score)
 
 # Fit the model
 grid_search.fit(X_train_preprocessed, y_train)

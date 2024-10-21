@@ -4,7 +4,11 @@ from sklearn.preprocessing import StandardScaler,  LabelEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.feature_selection import mutual_info_regression as mutual_info
+from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.feature_selection import RFE
 
 class LinearRegression:
     def __init__(self, learning_rate=0.1, n_iterations=2000):
@@ -52,29 +56,39 @@ class LinearRegression:
 
 label_encoder = LabelEncoder()
 
+
 def preprocess_data(X):
-    # Define the preprocessing steps
+    # Define the numeric features
     numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
-                        'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+                        'hemoglobin', 'height', 'potassium', 'vitamin D', 
+                        'weight', 'sarsaparilla', 'smurfberry liquor', 
+                        'smurfin donuts']
     
-    # Transform the categorical 'profession' column using the LabelEncoder
-    X['profession'] = label_encoder.fit_transform(X['profession'])
+    # Define the categorical features (just 'profession')
     categorical_features = ['profession']
 
-    # Create a ColumnTransformer for the numerical features
+    # Create transformers for numeric and categorical data
     numeric_transformer = StandardScaler()
+    categorical_transformer = OneHotEncoder(drop='first', sparse_output=False) # OneHotEncoder drops the first category to avoid multicollinearity
 
+    # Create a ColumnTransformer for preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', numeric_transformer, numeric_features)
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
         ],
-        remainder='passthrough'  # Keep the transformed 'profession' column as-is
+        remainder='passthrough'  # Keep any other columns as-is
     )
 
     # Apply the transformations
     X_preprocessed = preprocessor.fit_transform(X)
-    feature_names = numeric_features + categorical_features
+    
+
+    profession_categories = preprocessor.named_transformers_['cat'].get_feature_names_out(['profession'])
+    feature_names = numeric_features + list(profession_categories)
+    
     return X_preprocessed, feature_names
+
 
 def map_ordinal_features(X):
     ordinal_mapping = {
@@ -134,17 +148,19 @@ def main():
     X_train_preprocessed, feature_names = preprocess_data(X_train)
     X_test_preprocessed, _ = preprocess_data(X_test)
 
+    print(feature_names)
     #inti model
     
-    model = LinearRegression(learning_rate=0.1, n_iterations=2000)
+    model = LinearRegression(learning_rate=0.001, n_iterations=5000)
 
     ##################
     # feature selection  mutual info and forward search
     ###################
-    mi = pd.Series(mutual_info(X_train_preprocessed, y_train), index=X_train.columns)
+    X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
+    mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
     print(mi)
 
-    n_features = 6
+    n_features = 15
 
     def mi_filter(mi,n_features):
         mi_copy = mi.copy()
@@ -161,7 +177,7 @@ def main():
     X_train_selected = X_train_preprocessed[:, selected_indices]
     X_test_selected = X_test_preprocessed[:, selected_indices]
 
-    selected_features= backward_greed_search(model, X_train_preprocessed, y_train, n_features)
+    selected_features= forward_feature_selection(model, X_train_preprocessed, y_train, 6)
 
     # Select the top features
     X_train_selected = X_train_preprocessed[:, selected_features]
@@ -177,6 +193,9 @@ def main():
     # Evaluate the model using RMSE
     rmse = compute_rmse(predictions, y_test)
     print(f"Root Mean Squared Error (RMSE): {rmse}")
+    # Evaluate the model using R² score
+    r2 = r2_score(y_test, predictions)
+    print(f"R² Score: {r2}")
 
     # Visualize the predictions
     plt.scatter(y_test, predictions)

@@ -7,6 +7,9 @@ from sklearn.feature_selection import SequentialFeatureSelector
 import matplotlib.pyplot as plt
 from sklearn.metrics import make_scorer
 from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import mutual_info_regression as mutual_info
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 
 class LinearRegression:
     def __init__(self, learning_rate=0.01, n_iterations=1000):
@@ -56,27 +59,34 @@ class LinearRegression:
 label_encoder = LabelEncoder()
 
 def preprocess_data(X):
-    # Define the preprocessing steps
+    # Define the numeric features
     numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
-                        'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+                        'hemoglobin', 'height', 'potassium', 'vitamin D', 
+                        'weight', 'sarsaparilla', 'smurfberry liquor', 
+                        'smurfin donuts']
     
-    # Transform the categorical 'profession' column using the LabelEncoder
-    X['profession'] = label_encoder.fit_transform(X['profession'])
+    # Define the categorical features (just 'profession')
     categorical_features = ['profession']
 
-    # Create a ColumnTransformer for the numerical features
+    # Create transformers for numeric and categorical data
     numeric_transformer = StandardScaler()
+    categorical_transformer = OneHotEncoder(drop='first', sparse_output=False) # OneHotEncoder drops the first category to avoid multicollinearity
 
+    # Create a ColumnTransformer for preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', numeric_transformer, numeric_features)
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
         ],
-        remainder='passthrough'  # Keep the transformed 'profession' column as-is
+        remainder='passthrough'  # Keep any other columns as-is
     )
 
     # Apply the transformations
     X_preprocessed = preprocessor.fit_transform(X)
-    feature_names = numeric_features + categorical_features
+    
+    profession_categories = preprocessor.named_transformers_['cat'].get_feature_names_out(['profession'])
+    feature_names = numeric_features + list(profession_categories)
+    
     return X_preprocessed, feature_names
 
 def map_ordinal_features(X):
@@ -96,26 +106,32 @@ def compute_rmse(predict, target):
     diff = predict - np.squeeze(target)
     return np.sqrt((diff ** 2).sum() / len(target))
 
+def mi_filter(mi,n_features):
+        mi_copy = mi.copy()
+        sorted_mi = mi_copy.abs().sort_values(ascending=False)
+        selected_features = sorted_mi.index[:n_features].tolist()
+        return selected_features
+
 scorer = make_scorer(compute_rmse,greater_is_better=False)
 
-def find_best_n_features(model, X, y, max_features):
+def find_best_n_features(model, X, y, max_features,mi,feature_names):
     feature_counts = range(1, max_features + 1)
     scores = []
 
     for n_features in feature_counts:
-        sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='forward', cv=5)
-        sfs.fit(X, y)
-        selected_features = sfs.get_support(indices=True)
+
+        selected_features =  mi_filter(mi,n_features) 
         
         # Evaluate the model using cross-validation
-        X_selected = X[:, selected_features]
+        selected_indices = [feature_names.index(feature) for feature in selected_features]
+        X_selected = X[:, selected_indices]
         score = cross_val_score(model, X_selected, y, cv=5, scoring=scorer).mean()
         scores.append(-score)    
         print(f"Features: {selected_features}, RMSE: {-score}")
     return feature_counts, scores
 
 def main():
-   # Load the data (adjust paths as needed)
+
     X_train = pd.read_csv(r'..\data_students\labeled_data\X_train.csv')
     y_train = pd.read_csv(r'..\data_students\labeled_data\y_train.csv', header=None).values.ravel()
 
@@ -123,34 +139,39 @@ def main():
     # preprocesing data
     ###################
     X_train = X_train.drop(columns=['img_filename'])
-    
+   
 
     X_train = map_ordinal_features(X_train)
-    
-  
+
     numeric_cols = X_train.select_dtypes(include=[np.number]).columns
 
     X_train[numeric_cols] = X_train[numeric_cols].fillna(X_train[numeric_cols].mean())
-
+    
     X_train_preprocessed, feature_names = preprocess_data(X_train)
-
+   
+    print(feature_names)
     #inti model
     
-    model = LinearRegression(learning_rate=0.1, n_iterations=2000)
+    model = LinearRegression(learning_rate=0.001, n_iterations=5000)
 
+    ##################
+    # feature selection  mutual info and forward search
+    ###################
+    X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
+    mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
+    print(mi)
 
-    # Define the maximum number of features to test
-    max_features = 12  # Adjust this based on your dataset
+    max_features = 17
 
     # Find the best number of features
-    feature_counts, scores = find_best_n_features(model, X_train_preprocessed, y_train, max_features)
+    feature_counts, scores = find_best_n_features(model, X_train_preprocessed, y_train, max_features,mi,feature_names)
 
     # Plot the results
     plt.plot(feature_counts, scores, marker='o')
     plt.xlabel('Number of Features')
-    plt.ylabel('Mean Squared Error (MSE)')
-    plt.title('Feature Selection: MSE vs Number of Features')
-    plt.xticks(feature_counts)  # Set x-ticks to be the feature counts
+    plt.ylabel('Root Mean Squared Error (RMSE)')
+    plt.title('Feature Selection: RMSE vs Number of Features')
+    plt.xticks(feature_counts)  
     plt.show()
 
     # Find the best number of features
