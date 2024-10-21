@@ -8,14 +8,14 @@ from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.feature_selection import RFE
+from sklearn.base import BaseEstimator, TransformerMixin
 
 class LinearRegression:
-    def __init__(self, learning_rate=0.1, n_iterations=2000):
+    def __init__(self, learning_rate, n_iterations):
         self.learning_rate = learning_rate
         self.n_iterations = n_iterations
         self.weights = None
-        self.bias = 0
+        self.bias = None
 
     def fit(self, X, y):
         n_samples, n_features = X.shape
@@ -32,9 +32,6 @@ class LinearRegression:
             self.weights -= self.learning_rate * dw
             self.bias -= self.learning_rate * db
 
-            if i % 100 == 0:
-                loss = (1 / (2 * n_samples)) * np.sum(error ** 2)
-                #print(f"Iteration {i}: Loss = {loss}")
 
     def get_params(self, deep=True):
         return {"learning_rate": self.learning_rate, "n_iterations": self.n_iterations}
@@ -45,10 +42,11 @@ class LinearRegression:
         return self
 
     def score(self, X, y):
-        y_pred = self.predict(X)
-        u = np.sum((y - y_pred) ** 2)
-        v = np.sum((y - np.mean(y)) ** 2)
-        return 1 - (u / v)
+        y_pred = self.predict(X)  
+        mse = np.mean((y - y_pred) ** 2) 
+        rmse = np.sqrt(mse)  
+        return -rmse # Return negative RMSE
+
 
 
     def predict(self, X):
@@ -56,63 +54,53 @@ class LinearRegression:
 
 label_encoder = LabelEncoder()
 
+class LabelEncoderTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        self.label_encoders = {}
+
+    def fit(self, X, y=None):
+        for column in X.columns:
+            le = LabelEncoder()
+            le.fit(X[column])
+            self.label_encoders[column] = le
+        return self
+
+    def transform(self, X):
+        X_transformed = X.copy()
+        for column, le in self.label_encoders.items():
+            X_transformed[column] = le.transform(X[column])
+        return X_transformed
 
 def preprocess_data(X):
-    # Define the numeric features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
-                        'hemoglobin', 'height', 'potassium', 'vitamin D', 
-                        'weight', 'sarsaparilla', 'smurfberry liquor', 
-                        'smurfin donuts']
-    
-    # Define the categorical features (just 'profession')
+    # Define the preprocessing steps
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight']
     categorical_features = ['profession']
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
 
-    # Create transformers for numeric and categorical data
     numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(drop='first', sparse_output=False) # OneHotEncoder drops the first category to avoid multicollinearity
+    categorical_transformer = OneHotEncoder()
+    ordinal_transformer = LabelEncoderTransformer()
 
-    # Create a ColumnTransformer for preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)
-        ],
-        remainder='passthrough'  # Keep any other columns as-is
-    )
+            ('cat', categorical_transformer, categorical_features),
+            ('ord', ordinal_transformer, ordinal_features)
+        ])
 
     # Apply the transformations
     X_preprocessed = preprocessor.fit_transform(X)
     
-
-    profession_categories = preprocessor.named_transformers_['cat'].get_feature_names_out(['profession'])
-    feature_names = numeric_features + list(profession_categories)
+    # Get the feature names after preprocessing
+    feature_names = numeric_features + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)) + ordinal_features
     
     return X_preprocessed, feature_names
 
-
-def map_ordinal_features(X):
-    ordinal_mapping = {
-        'Very Low': 1,
-        'Low': 2,
-        'Moderate': 3,
-        'High': 4,
-        'Very High': 5
-    }
-    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
-    for feature in ordinal_features:
-        X[feature] = X[feature].map(ordinal_mapping)
-    return X
 
 def compute_rmse(predict, target):
     diff = predict - np.squeeze(target)
     return np.sqrt((diff ** 2).sum() / len(target))
 
-
-def backward_greed_search(model, X, y, n_features):
-    sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='backward', cv=5)
-    sfs.fit(X, y)
-    selected_indices = np.where(sfs.get_support())[0]
-    return selected_indices
 
 def forward_feature_selection(model, X, y, n_features):
     sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='forward', cv=5)
@@ -134,33 +122,24 @@ def main():
     X_train = X_train.drop(columns=['img_filename'])
     X_test = X_test.drop(columns=['img_filename'])
 
-    
-    X_train = map_ordinal_features(X_train)
-    X_test = map_ordinal_features(X_test)
-
-  
-    numeric_cols = X_train.select_dtypes(include=[np.number]).columns
-
-    X_train[numeric_cols] = X_train[numeric_cols].fillna(X_train[numeric_cols].mean())
-    X_test[numeric_cols] = X_test[numeric_cols].fillna(X_test[numeric_cols].mean())
-
 
     X_train_preprocessed, feature_names = preprocess_data(X_train)
     X_test_preprocessed, _ = preprocess_data(X_test)
-
-    print(feature_names)
+    print(X_train_preprocessed[:3])
+    print(X_train_preprocessed.shape)
     #inti model
-    
-    model = LinearRegression(learning_rate=0.001, n_iterations=5000)
+    print(len(feature_names))
+    model = LinearRegression(learning_rate=0.01, n_iterations=1000)
 
     ##################
     # feature selection  mutual info and forward search
     ###################
     X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
+    print(X_train_preprocessed_df[:3])
     mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
     print(mi)
 
-    n_features = 15
+    n_features = 13
 
     def mi_filter(mi,n_features):
         mi_copy = mi.copy()
@@ -183,12 +162,10 @@ def main():
     X_train_selected = X_train_preprocessed[:, selected_features]
     X_test_selected = X_test_preprocessed[:, selected_features]
 
-    # Initialize and train the model
+    
     model.fit(X_train_selected, y_train)
 
-    # Make predictions
     predictions = model.predict(X_test_selected)
-    #print("Predictions:", predictions)
 
     # Evaluate the model using RMSE
     rmse = compute_rmse(predictions, y_test)
@@ -208,6 +185,20 @@ def main():
     plt.plot(y_test, y_line, color='red', label='Regression Line')
 
     plt.show()
+
+    # Load new data for predictions
+    new_data = pd.read_csv(r'..\data_students\unlabeled_data\X.csv')
+
+    new_data = new_data.drop(columns=['img_filename'])
+    # Preprocess the new data
+   
+    new_data_preprocessed, _ = preprocess_data(new_data)
+
+    
+    new_data_selected = new_data_preprocessed[:, selected_features]
+    new_predictions = model.predict(new_data_selected)
+    pd.DataFrame(new_predictions).to_csv(r'y_pred.csv', index=False, header=False, float_format='%.10f')
+    print("Predictions written!")
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.model_selection import KFold
+from sklearn.base import BaseEstimator, TransformerMixin
 
 class LinearRegression:
     def __init__(self, learning_rate=0.01, n_iterations=1000):
@@ -46,10 +48,10 @@ class LinearRegression:
         return self
 
     def score(self, X, y):
-        y_pred = self.predict(X)
-        u = np.sum((y - y_pred) ** 2)
-        v = np.sum((y - np.mean(y)) ** 2)
-        return 1 - (u / v)
+        y_pred = self.predict(X)  
+        mse = np.mean((y - y_pred) ** 2) 
+        rmse = np.sqrt(mse)  
+        return -rmse
 
 
     def predict(self, X):
@@ -58,49 +60,47 @@ class LinearRegression:
 
 label_encoder = LabelEncoder()
 
+class LabelEncoderTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        self.label_encoders = {}
+
+    def fit(self, X, y=None):
+        for column in X.columns:
+            le = LabelEncoder()
+            le.fit(X[column])
+            self.label_encoders[column] = le
+        return self
+
+    def transform(self, X):
+        X_transformed = X.copy()
+        for column, le in self.label_encoders.items():
+            X_transformed[column] = le.transform(X[column])
+        return X_transformed
+
 def preprocess_data(X):
-    # Define the numeric features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 
-                        'hemoglobin', 'height', 'potassium', 'vitamin D', 
-                        'weight', 'sarsaparilla', 'smurfberry liquor', 
-                        'smurfin donuts']
-    
-    # Define the categorical features (just 'profession')
+    # Define the preprocessing steps
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight']
     categorical_features = ['profession']
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
 
-    # Create transformers for numeric and categorical data
     numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(drop='first', sparse_output=False) # OneHotEncoder drops the first category to avoid multicollinearity
+    categorical_transformer = OneHotEncoder()
+    ordinal_transformer = LabelEncoderTransformer()
 
-    # Create a ColumnTransformer for preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)
-        ],
-        remainder='passthrough'  # Keep any other columns as-is
-    )
+            ('cat', categorical_transformer, categorical_features),
+            ('ord', ordinal_transformer, ordinal_features)
+        ])
 
     # Apply the transformations
     X_preprocessed = preprocessor.fit_transform(X)
     
-    profession_categories = preprocessor.named_transformers_['cat'].get_feature_names_out(['profession'])
-    feature_names = numeric_features + list(profession_categories)
+    # Get the feature names after preprocessing
+    feature_names = numeric_features + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)) + ordinal_features
     
     return X_preprocessed, feature_names
-
-def map_ordinal_features(X):
-    ordinal_mapping = {
-        'Very Low': 1,
-        'Low': 2,
-        'Moderate': 3,
-        'High': 4,
-        'Very High': 5
-    }
-    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
-    for feature in ordinal_features:
-        X[feature] = X[feature].map(ordinal_mapping)
-    return X
 
 def compute_rmse(predict, target):
     diff = predict - np.squeeze(target)
@@ -113,6 +113,7 @@ def mi_filter(mi,n_features):
         return selected_features
 
 scorer = make_scorer(compute_rmse,greater_is_better=False)
+kf= KFold(n_splits= 5)
 
 def find_best_n_features(model, X, y, max_features,mi,feature_names):
     feature_counts = range(1, max_features + 1)
@@ -125,7 +126,7 @@ def find_best_n_features(model, X, y, max_features,mi,feature_names):
         # Evaluate the model using cross-validation
         selected_indices = [feature_names.index(feature) for feature in selected_features]
         X_selected = X[:, selected_indices]
-        score = cross_val_score(model, X_selected, y, cv=5, scoring=scorer).mean()
+        score = cross_val_score(model, X_selected, y, cv=kf, scoring=scorer).mean()
         scores.append(-score)    
         print(f"Features: {selected_features}, RMSE: {-score}")
     return feature_counts, scores
@@ -140,19 +141,13 @@ def main():
     ###################
     X_train = X_train.drop(columns=['img_filename'])
    
-
-    X_train = map_ordinal_features(X_train)
-
-    numeric_cols = X_train.select_dtypes(include=[np.number]).columns
-
-    X_train[numeric_cols] = X_train[numeric_cols].fillna(X_train[numeric_cols].mean())
     
     X_train_preprocessed, feature_names = preprocess_data(X_train)
    
     print(feature_names)
     #inti model
     
-    model = LinearRegression(learning_rate=0.001, n_iterations=5000)
+    model = LinearRegression(learning_rate=0.01, n_iterations=1000)
 
     ##################
     # feature selection  mutual info and forward search
@@ -161,7 +156,7 @@ def main():
     mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
     print(mi)
 
-    max_features = 17
+    max_features = 18
 
     # Find the best number of features
     feature_counts, scores = find_best_n_features(model, X_train_preprocessed, y_train, max_features,mi,feature_names)
