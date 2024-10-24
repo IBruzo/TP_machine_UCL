@@ -1,106 +1,42 @@
 from sklearn.model_selection import cross_val_score
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler,  LabelEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import SequentialFeatureSelector
+from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 from sklearn.metrics import make_scorer
-from sklearn.model_selection import train_test_split
 from sklearn.feature_selection import mutual_info_regression as mutual_info
-from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.model_selection import KFold
-from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.linear_model import LinearRegression
 
-class LinearRegression:
-    def __init__(self, learning_rate=0.01, n_iterations=1000):
-        self.learning_rate = learning_rate
-        self.n_iterations = n_iterations
-        self.weights = None
-        self.bias = 0
-
-    def fit(self, X, y):
-        n_samples, n_features = X.shape
-        self.weights = np.zeros(n_features)
-        self.bias = 0
-
-        for i in range(self.n_iterations):
-            y_predicted = np.dot(X, self.weights) + self.bias
-            error = y_predicted - y
-
-            dw = (1 / n_samples) * np.dot(X.T, error)
-            db = (1 / n_samples) * np.sum(error)
-
-            self.weights -= self.learning_rate * dw
-            self.bias -= self.learning_rate * db
-
-            if i % 100 == 0:
-                loss = (1 / (2 * n_samples)) * np.sum(error ** 2)
-                #print(f"Iteration {i}: Loss = {loss}")
-
-    def get_params(self, deep=True):
-        return {"learning_rate": self.learning_rate, "n_iterations": self.n_iterations}
-
-    def set_params(self, **params):
-        for key, value in params.items():
-            setattr(self, key, value)
-        return self
-
-    def score(self, X, y):
-        y_pred = self.predict(X)  
-        mse = np.mean((y - y_pred) ** 2) 
-        rmse = np.sqrt(mse)  
-        return -rmse
-
-
-    def predict(self, X):
-        return np.dot(X, self.weights) + self.bias
-
-
-label_encoder = LabelEncoder()
-
-class LabelEncoderTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        self.label_encoders = {}
-
-    def fit(self, X, y=None):
-        for column in X.columns:
-            le = LabelEncoder()
-            le.fit(X[column])
-            self.label_encoders[column] = le
-        return self
-
-    def transform(self, X):
-        X_transformed = X.copy()
-        for column, le in self.label_encoders.items():
-            X_transformed[column] = le.transform(X[column])
-        return X_transformed
 
 def preprocess_data(X):
-    # Define the preprocessing steps
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     categorical_features = ['profession']
     ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
 
-    numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder()
-    ordinal_transformer = LabelEncoderTransformer()
+    feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}
+    for feature in ordinal_features:
+        X[feature] = X[feature].map(feat_score)
 
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features),
-            ('ord', ordinal_transformer, ordinal_features)
-        ])
+   
+    onehot_encoder = OneHotEncoder(sparse_output=False)  # Ensure dense output to easily combine later
+    X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
 
-    # Apply the transformations
-    X_preprocessed = preprocessor.fit_transform(X)
     
-    # Get the feature names after preprocessing
-    feature_names = numeric_features + list(preprocessor.named_transformers_['cat'].get_feature_names_out(categorical_features)) + ordinal_features
-    
-    return X_preprocessed, feature_names
+    X_combined = np.hstack([
+        X[numeric_features + ordinal_features].values,  
+        X_categorical_encoded 
+    ])
+
+    #Scale the combined features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_combined)
+
+    encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
+    feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
+
+    return X_scaled, feature_names
 
 def compute_rmse(predict, target):
     diff = predict - np.squeeze(target)
@@ -147,7 +83,7 @@ def main():
     print(feature_names)
     #inti model
     
-    model = LinearRegression(learning_rate=0.01, n_iterations=1000)
+    model = LinearRegression()
 
     ##################
     # feature selection  mutual info and forward search
@@ -160,6 +96,8 @@ def main():
 
     # Find the best number of features
     feature_counts, scores = find_best_n_features(model, X_train_preprocessed, y_train, max_features,mi,feature_names)
+    best_n_features = feature_counts[np.argmin(scores)]
+    print(f"Best number of features: {best_n_features}")
 
     # Plot the results
     plt.plot(feature_counts, scores, marker='o')
@@ -168,10 +106,6 @@ def main():
     plt.title('Feature Selection: RMSE vs Number of Features')
     plt.xticks(feature_counts)  
     plt.show()
-
-    # Find the best number of features
-    best_n_features = feature_counts[np.argmin(scores)]
-    print(f"Best number of features: {best_n_features}")
 
 if __name__ == "__main__":
     main()
