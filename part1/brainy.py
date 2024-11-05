@@ -12,29 +12,35 @@ from sklearn.linear_model import LinearRegression
 
 
 
+# Transform text columns into useful digital tables
 def preprocess_data(X):
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
-    categorical_features = ['profession']
-    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
 
+    # Table for features
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    
+    # Table for features with a score
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}
     for feature in ordinal_features:
         X[feature] = X[feature].map(feat_score)
 
-   
+    # Table for professions
+    categorical_features = ['profession']
     onehot_encoder = OneHotEncoder(sparse_output=False)  # Ensure dense output to easily combine later
     X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
 
     
+    # Combine all features
     X_combined = np.hstack([
         X[numeric_features + ordinal_features].values,  
         X_categorical_encoded 
     ])
 
-    #Scale the combined features
+    # Normalize & scale the combined features
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X_combined)
 
+    # Extract new professions column names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
 
@@ -70,8 +76,7 @@ def main():
     X_train_preprocessed, feature_names = preprocess_data(X_train)
     X_test_preprocessed, _ = preprocess_data(X_test)
   
-    #inti model
-
+    #init model
     model = LinearRegression()
 
     ##################
@@ -83,8 +88,10 @@ def main():
     mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
     print(mi)
 
+    # TODO: Select n features based on the function call
     n_features = 8
 
+    # Filter top mi up until 8 and remove the ones with 0 value
     def mi_filter(mi,n_features):
         mi_copy = mi.copy()
         sorted_mi = mi_copy.abs().sort_values(ascending=False)
@@ -95,25 +102,27 @@ def main():
         selected_features = sorted_mi.index[:n_features].tolist()
         return selected_features
     
-    
+    # Select best features
     selected_features =  mi_filter(mi,n_features) 
 
 
     print("Selected Features:", selected_features)
     selected_indices = [feature_names.index(feature) for feature in selected_features]
 
+    # Filter only the selected features columns
     X_train_selected = X_train_preprocessed[:, selected_indices]
     X_test_selected = X_test_preprocessed[:, selected_indices]
 
- 
+    # Train the model
     model.fit(X_train_selected, y_train)
 
+    # Predict
     predictions = model.predict(X_test_selected)
 
-    # Evaluation
-    rmse = compute_rmse(predictions, y_test)
+    # Evaluation score
+    rmse = compute_rmse(predictions, y_test)    # Lower the better
     print(f"Root Mean Squared Error (RMSE): {rmse}")
-    r2 = r2_score(y_test, predictions)
+    r2 = r2_score(y_test, predictions)          # Higher the better
     print(f"R² Score: {r2}")
 
     #plots

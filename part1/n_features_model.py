@@ -48,7 +48,10 @@ def mi_filter(mi,n_features):
         selected_features = sorted_mi.index[:n_features].tolist()
         return selected_features
 
+# Define the scorer with the RMSE metric used in practical lessons
 scorer = make_scorer(compute_rmse,greater_is_better=False)
+
+# Keep one KF for cross validation
 kf= KFold(n_splits= 5)
 
 def find_best_n_features(model, X, y, max_features,mi,feature_names):
