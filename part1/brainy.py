@@ -69,7 +69,7 @@ def load_data():
 
 def prepare_model(X, y_train, feat_names):
 
-    def fwdsearch_mutinfo_featsel(X, feat_names, y_train):
+    def datafr_mutinfo_featsel(X, feat_names, y_train):
         df = pd.DataFrame(X, columns=feat_names)
         mi = pd.Series(mutual_info(df, y_train), index=df.columns)
 
@@ -77,7 +77,7 @@ def prepare_model(X, y_train, feat_names):
         n_features = 8
         return df, mi, n_features
     
-    X_train_preprocessed_df, mi, n_features = fwdsearch_mutinfo_featsel(X, feat_names, y_train)
+    X_train_preprocessed_df, mi, n_features = datafr_mutinfo_featsel(X, feat_names, y_train)
     print(f"Mutual Information Scores:\n\t {mi}\n")
 
     def mi_filter(mi, n_features):
@@ -92,9 +92,10 @@ def prepare_model(X, y_train, feat_names):
 
     
     selected_features =  mi_filter(mi, n_features)
-    print(f"Selected Features:\n\t{', '.join(selected_features)}\n")
+    print(f"Selected Features:\t{n_features}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
+    # Should n_features == len(selected_indices) == len(selected_features)?
     return selected_indices
 
 def evaluate(predictions, y_test):
