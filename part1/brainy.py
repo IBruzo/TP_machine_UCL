@@ -78,21 +78,13 @@ def prepare_model(X, y_train, feat_names):
         return df, mi, n_features
     
     X_train_preprocessed_df, mi, n_features = datafr_mutinfo_featsel(X, feat_names, y_train)
-    print(f"Mutual Information Scores:\n\t {mi}\n")
+    print(f"Mutual Information Scores:\n {mi}\n")
 
-    def mi_filter(mi, n_features):
-        mi_copy = mi.copy()
-        sorted_mi = mi_copy.abs().sort_values(ascending=False)
-        for i in range(len(sorted_mi)):
-            if sorted_mi.iloc[i] == 0:  # Use .iloc to access by position
-                n_features = i
-                break
-        selected_features = sorted_mi.index[:n_features].tolist()
-        return selected_features
+    # Filter out the features with mi = 0
+    selected_features = mi[mi > 0].index.tolist()       
+    # for now we are selecting all features with mi > 0, but could be consider for optimization purposes a threshold of ~>0.03
 
-    
-    selected_features =  mi_filter(mi, n_features)
-    print(f"Selected Features:\t{n_features}\n\t{', '.join(selected_features)}\n")
+    print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
     # Should n_features == len(selected_indices) == len(selected_features)?
