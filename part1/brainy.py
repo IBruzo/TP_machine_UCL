@@ -58,74 +58,54 @@ def forward_feature_selection(model, X, y, n_features):
     selected_indices = np.where(sfs.get_support())[0]
     return selected_indices
 
-
-def main():
+def load_data():
     # Load the data (adjust paths as needed)
     X_train = pd.read_csv(r'..\data_students\labeled_data\X_train.csv')
     X_test = pd.read_csv(r'..\data_students\labeled_data\X_test.csv')
     y_train = pd.read_csv(r'..\data_students\labeled_data\y_train.csv', header=None).values.ravel()
     y_test = pd.read_csv(r'..\data_students\labeled_data\y_test.csv', header=None).values.ravel()
 
-    ##################
-    # preprocesing data
-    ###################
-    X_train = X_train.drop(columns=['img_filename'])
-    X_test = X_test.drop(columns=['img_filename'])
+    return X_train, X_test, y_train, y_test
 
+def prepare_model(X, y_train, feat_names):
 
-    X_train_preprocessed, feature_names = preprocess_data(X_train)
-    X_test_preprocessed, _ = preprocess_data(X_test)
-  
-    #init model
-    model = LinearRegression()
+    def fwdsearch_mutinfo_featsel(X, feat_names, y_train):
+        df = pd.DataFrame(X, columns=feat_names)
+        mi = pd.Series(mutual_info(df, y_train), index=df.columns)
 
-    ##################
-    # feature selection  mutual info and forward search
-    ###################
-    X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
+        # TODO: Select n features based on the function call
+        n_features = 8
+        return df, mi, n_features
+    
+    X_train_preprocessed_df, mi, n_features = fwdsearch_mutinfo_featsel(X, feat_names, y_train)
+    print(f"Mutual Information Scores:\n\t {mi}\n")
 
-
-    mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
-    print(mi)
-
-    # TODO: Select n features based on the function call
-    n_features = 8
-
-    # Filter top mi up until 8 and remove the ones with 0 value
-    def mi_filter(mi,n_features):
+    def mi_filter(mi, n_features):
         mi_copy = mi.copy()
         sorted_mi = mi_copy.abs().sort_values(ascending=False)
         for i in range(len(sorted_mi)):
-            if sorted_mi[i] == 0: #if there are values that are 0, we can stop there
+            if sorted_mi.iloc[i] == 0:  # Use .iloc to access by position
                 n_features = i
                 break
         selected_features = sorted_mi.index[:n_features].tolist()
         return selected_features
+
     
-    # Select best features
-    selected_features =  mi_filter(mi,n_features) 
+    selected_features =  mi_filter(mi, n_features)
+    print(f"Selected Features:\n\t{', '.join(selected_features)}\n")
+    selected_indices = [feat_names.index(feature) for feature in selected_features]
 
+    return selected_indices
 
-    print("Selected Features:", selected_features)
-    selected_indices = [feature_names.index(feature) for feature in selected_features]
-
-    # Filter only the selected features columns
-    X_train_selected = X_train_preprocessed[:, selected_indices]
-    X_test_selected = X_test_preprocessed[:, selected_indices]
-
-    # Train the model
-    model.fit(X_train_selected, y_train)
-
-    # Predict
-    predictions = model.predict(X_test_selected)
-
-    # Evaluation score
+def evaluate(predictions, y_test):
     rmse = compute_rmse(predictions, y_test)    # Lower the better
-    print(f"Root Mean Squared Error (RMSE): {rmse}")
+    print(f"Root Mean Squared Error (RMSE):\n\t{rmse}\n")
     r2 = r2_score(y_test, predictions)          # Higher the better
-    print(f"R² Score: {r2}")
+    print(f"R² Score:\n\t{r2}\n")
 
-    #plots
+    return rmse, r2
+
+def plot(predictions, y_test, selected_feats_idx, model):
     plt.scatter(y_test, predictions)
     plt.xlabel("Actual Values")
     plt.ylabel("Predicted Values")
@@ -137,17 +117,54 @@ def main():
 
     plt.show()
 
-    # Predict
-    new_data = pd.read_csv(r'..\data_students\unlabeled_data\X.csv')
+def predict(path_to_data, model, selected_feats_idx):
+    new_data = pd.read_csv(path_to_data)
 
     new_data = new_data.drop(columns=['img_filename'])   
     new_data_preprocessed, _ = preprocess_data(new_data)
 
     
-    new_data_selected = new_data_preprocessed[:, selected_indices]
+    new_data_selected = new_data_preprocessed[:, selected_feats_idx]
     new_predictions = model.predict(new_data_selected)
     pd.DataFrame(new_predictions).to_csv(r'y_pred.csv', index=False, header=False, float_format='%.10f')
-    print("Predictions written!")
+    print("Predictions written!", '\n')
+
+
+def main():
+    # Load the data (adjust paths as needed)
+    X_train, X_test, y_train, y_test = load_data()
+
+    ##################
+    # preprocesing data
+    ###################
+    X_train = X_train.drop(columns=['img_filename'])
+    X_test = X_test.drop(columns=['img_filename'])
+
+
+    X_train_preprocessed, feature_names = preprocess_data(X_train)
+    X_test_preprocessed, _ = preprocess_data(X_test)
+  
+    # init LR model
+    selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
+    model = LinearRegression()
+
+    # Filter only the selected features columns
+    X_train_selected = X_train_preprocessed[:, selected_feats_idx]
+    X_test_selected = X_test_preprocessed[:, selected_feats_idx]
+
+    # Train the model
+    model.fit(X_train_selected, y_train)
+
+    # Predict
+    predictions = model.predict(X_test_selected)
+
+    evaluate(predictions, y_test)
+
+    #plots
+    plot(predictions, y_test, selected_feats_idx, model)
+
+    # Use the model to predict the new data
+    predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx)
 
 if __name__ == "__main__":
     main()
