@@ -1,18 +1,15 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler,  LabelEncoder
-from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
-from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.linear_model import LinearRegression
 
 
 
-# Transform text columns into useful digital tables
 def preprocess_data(X):
 
     # Table for features
@@ -29,22 +26,21 @@ def preprocess_data(X):
     onehot_encoder = OneHotEncoder(sparse_output=False)  # Ensure dense output to easily combine later
     X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
 
-    
-    # Combine all features
-    X_combined = np.hstack([
-        X[numeric_features + ordinal_features].values,  
-        X_categorical_encoded 
-    ])
 
     # Normalize & scale the combined features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_combined)
+    X_scaled = scaler.fit_transform( X[numeric_features + ordinal_features].values)
+
+    X_combined = np.hstack([
+       X_scaled,  
+        X_categorical_encoded 
+    ])
 
     # Extract new professions column names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
 
-    return X_scaled, feature_names
+    return X_combined, feature_names
 
 
 def compute_rmse(predict, target):
@@ -52,11 +48,6 @@ def compute_rmse(predict, target):
     return np.sqrt((diff ** 2).sum() / len(target))
 
 
-def forward_feature_selection(model, X, y, n_features):
-    sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='forward', cv=5)
-    sfs.fit(X, y)
-    selected_indices = np.where(sfs.get_support())[0]
-    return selected_indices
 
 def load_data():
     # Load the data (adjust paths as needed)
@@ -69,20 +60,38 @@ def load_data():
 
 def prepare_model(X, y_train, feat_names):
 
-    def datafr_mutinfo_featsel(X, feat_names, y_train):
-        df = pd.DataFrame(X, columns=feat_names)
-        mi = pd.Series(mutual_info(df, y_train), index=df.columns)
-
-        # TODO: Select n features based on the function call
-        n_features = 8
-        return df, mi, n_features
     
-    X_train_preprocessed_df, mi, n_features = datafr_mutinfo_featsel(X, feat_names, y_train)
-    print(f"Mutual Information Scores:\n {mi}\n")
+    def corr_filter(corr, n_features, upper_threshold=0.7, lower_threshold=0.001, tighten=0.01, max_iterations=100):
+        corr_copy = corr.copy()
+        filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+        
+        iteration = 0
+        while len(filtered_corr) > n_features and iteration < max_iterations:
+            lower_threshold += tighten
+            upper_threshold -= tighten
+            filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+            iteration += 1
+        
+        iteration = 0
+        while len(filtered_corr) < n_features and iteration < max_iterations:
+            lower_threshold -= tighten
+            upper_threshold += tighten
+            filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+            iteration += 1
+        
+        # If it reaches max_iterations without reaching n_features, return the closest result
+        if len(filtered_corr) != n_features:
+            print("Warning: Could not reach exactly n_features within max_iterations.")
+        
+        selected_features = filtered_corr.index.tolist()
+        return selected_features
 
-    # Filter out the features with mi = 0
-    selected_features = mi[mi > 0].index.tolist()       
-    # for now we are selecting all features with mi > 0, but could be consider for optimization purposes a threshold of ~>0.03
+    df = pd.DataFrame(X, columns=feat_names)
+    y_train_series = pd.Series(y_train)
+    corr = df.corrwith(y_train_series)
+    
+    selected_features =  corr_filter(corr,n_features=12, upper_threshold=0.55, lower_threshold=0.001, tighten=0.01, max_iterations=100) #optimized with other script
+
 
     print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]

@@ -1,74 +1,79 @@
-from sklearn.model_selection import cross_val_score
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-import matplotlib.pyplot as plt
 from sklearn.metrics import make_scorer
-from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import GridSearchCV
+from itertools import product
 
 
 def preprocess_data(X):
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
-    categorical_features = ['profession']
-    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
 
+    # Table for features
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    
+    # Table for features with a score
+    ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}
     for feature in ordinal_features:
         X[feature] = X[feature].map(feat_score)
 
-   
+    # Table for professions
+    categorical_features = ['profession']
     onehot_encoder = OneHotEncoder(sparse_output=False)  # Ensure dense output to easily combine later
     X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
 
-    
+
+    # Normalize & scale the combined features
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform( X[numeric_features + ordinal_features].values)
+
     X_combined = np.hstack([
-        X[numeric_features + ordinal_features].values,  
+       X_scaled,  
         X_categorical_encoded 
     ])
 
-    #Scale the combined features
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_combined)
-
+    # Extract new professions column names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
 
-    return X_scaled, feature_names
+    return X_combined, feature_names
 
 def compute_rmse(predict, target):
     diff = predict - np.squeeze(target)
     return np.sqrt((diff ** 2).sum() / len(target))
 
-def mi_filter(mi,n_features):
-        mi_copy = mi.copy()
-        sorted_mi = mi_copy.abs().sort_values(ascending=False)
-        selected_features = sorted_mi.index[:n_features].tolist()
+def corr_filter(corr, n_features, upper_threshold=0.95, lower_threshold=0.1, tighten=0.01, max_iterations=100):
+        corr_copy = corr.copy()
+        filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+        
+        iteration = 0
+        while len(filtered_corr) > n_features and iteration < max_iterations:
+            lower_threshold += tighten
+            upper_threshold -= tighten
+            filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+            iteration += 1
+        
+        iteration = 0
+        while len(filtered_corr) < n_features and iteration < max_iterations:
+            lower_threshold -= tighten
+            upper_threshold += tighten
+            filtered_corr = corr_copy[(corr_copy.abs() >= lower_threshold) & (corr_copy.abs() <= upper_threshold)]
+            iteration += 1
+        
+        # If it reaches max_iterations without reaching n_features, return the closest result
+        if len(filtered_corr) != n_features:
+            print(f"Warning: Could not reach exactly n_features within max_iterations {max_iterations}. Selected {len(filtered_corr)} features. {n_features}")
+        
+        selected_features = filtered_corr.index.tolist()
         return selected_features
 
 # Define the scorer with the RMSE metric used in practical lessons
 scorer = make_scorer(compute_rmse,greater_is_better=False)
 
-# Keep one KF for cross validation
-kf= KFold(n_splits= 5)
 
-def find_best_n_features(model, X, y, max_features,mi,feature_names):
-    feature_counts = range(1, max_features + 1)
-    scores = []
-
-    for n_features in feature_counts:
-
-        selected_features =  mi_filter(mi,n_features) 
-        
-        # Evaluate the model using cross-validation
-        selected_indices = [feature_names.index(feature) for feature in selected_features]
-        X_selected = X[:, selected_indices]
-        score = cross_val_score(model, X_selected, y, cv=kf, scoring=scorer).mean()
-        scores.append(-score)    
-        print(f"Features: {selected_features}, RMSE: {-score}")
-    return feature_counts, scores
 
 def main():
 
@@ -92,23 +97,66 @@ def main():
     # feature selection  mutual info and forward search
     ###################
     X_train_preprocessed_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
-    mi = pd.Series(mutual_info(X_train_preprocessed_df, y_train), index=X_train_preprocessed_df.columns)
-    print(mi)
+    # Keep one KF for cross validation
+    kf= KFold(n_splits= 5,shuffle=True, random_state=42)
+    best_params = None
+    best_rmse = np.inf
 
-    max_features = 18
+    y_train_series = pd.Series(y_train)
+    corr = X_train_preprocessed_df.corrwith(y_train_series)
+    
+    param_grid = {
+    'n_features': [9,10,11, 12,16,18],
+    'upper_threshold': [0.5,0.55,0.6,],
+    'lower_threshold': [0.001, 0.0001],
+    'tighten': [ 0.01, 0.1,0.001],
+    'max_iterations': [100,150,200],
+    }
 
-    # Find the best number of features
-    feature_counts, scores = find_best_n_features(model, X_train_preprocessed, y_train, max_features,mi,feature_names)
-    best_n_features = feature_counts[np.argmin(scores)]
-    print(f"Best number of features: {best_n_features}")
+    # Define cross-validation
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
-    # Plot the results
-    plt.plot(feature_counts, scores, marker='o')
-    plt.xlabel('Number of Features')
-    plt.ylabel('Root Mean Squared Error (RMSE)')
-    plt.title('Feature Selection: RMSE vs Number of Features')
-    plt.xticks(feature_counts)  
-    plt.show()
+
+    # Grid Search
+    for n_features, upper, lower, tighten, max_iter in product(param_grid["n_features"],param_grid["upper_threshold"], 
+                                                param_grid["lower_threshold"], 
+                                                param_grid["tighten"], 
+                                                param_grid["max_iterations"]):
+        selected_features = corr_filter(corr, n_features, upper, lower, tighten, max_iter)
+        
+        
+        # Cross-validation RMSE
+        # Cross-validation RMSE
+        rmses = []
+        for train_index, val_index in kf.split(X_train_preprocessed_df):
+            # Use .iloc to select rows and columns by index and column names
+            X_train_cross = X_train_preprocessed_df.iloc[train_index][selected_features]
+            X_val = X_train_preprocessed_df.iloc[val_index][selected_features]
+            y_train_cross, y_val = y_train[train_index], y_train[val_index]
+            
+            model = LinearRegression()
+            model.fit(X_train_cross, y_train_cross)
+            y_pred = model.predict(X_val)
+            rmse = compute_rmse(y_val, y_pred)
+            rmses.append(rmse)
+
+        
+        mean_rmse = np.mean(rmses)
+        
+        # Update best parameters if the current mean RMSE is lower
+        if mean_rmse < best_rmse:
+            best_rmse = mean_rmse
+            best_params = {
+                "n_features": len(selected_features),   
+                "upper_threshold": upper,
+                "lower_threshold": lower,
+                "tighten": tighten,
+                "max_iterations": max_iter
+            }
+
+    print("Best Parameters:")
+    print(best_params)
+    print("Best Cross-Validated RMSE:", best_rmse)
 
 if __name__ == "__main__":
     main()
