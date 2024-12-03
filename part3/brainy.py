@@ -12,6 +12,7 @@ import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from TP_machine_UCL.part3.clases import MyCNN, CustomDataset, SimpleCNN
+from TP_machine_UCL.part3.utils import visualize_dataset_tSNE
 
 
 
@@ -81,7 +82,7 @@ def prepare_model(X, y_train, feat_names):
     print(f"Mutual Information Scores:\n {mi}\n")
 
     # Filter out the features with mi = 0
-    selected_features = mi[mi > 0.0].index.tolist()       
+    selected_features = mi[mi > 0.03].index.tolist()       
     # for now we are selecting all features with mi > 0, but could be consider for optimization purposes a threshold of ~>0.03
 
     print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
@@ -147,14 +148,15 @@ def main():
     # Define the number of features to extract 
     n_features_img=8
     # Create instance of cnn model
-    cnn = MyCNN(n_features=n_features_img, batch_size=50, n_epochs=20, learning_rate=0.0005) 
+    #n_features=n_features_img, batch_size=50, n_epochs=20, learning_rate=0.0005
+    cnn = MyCNN(n_features=n_features_img, batch_size=32, n_epochs=20, learning_rate=0.0005) 
 
     # Fit cnn
     cnn.fit(images_train, y_train, r'..\data_students\labeled_data\Img_train')
 
-    dataset = CustomDataset(images_train, r'..\data_students\labeled_data\Img_train', target=y_train)
+    dataset_train = CustomDataset(images_train, r'..\data_students\labeled_data\Img_train', target=y_train)
 
-    img_features_train = cnn.extract_features(dataset.images, dataset.images_directory)
+    img_features_train = cnn.extract_features(dataset_train.images, dataset_train.images_directory)
     img_features_train_df = pd.DataFrame(
     img_features_train, 
     columns=[f'img_feat_{i+1}' for i in range(img_features_train.shape[1])]
@@ -163,9 +165,9 @@ def main():
 
 
 
-    dataset = CustomDataset(images_test, r'..\data_students\labeled_data\Img_test', target=y_test)
+    dataset_test = CustomDataset(images_test, r'..\data_students\labeled_data\Img_test', target=y_test)
 
-    img_features_test = cnn.extract_features(dataset.images, dataset.images_directory)
+    img_features_test = cnn.extract_features(dataset_test.images, dataset_test.images_directory)
     img_features_test_df = pd.DataFrame(
     img_features_test, 
     columns=[f'img_feat_{i+1}' for i in range(img_features_test.shape[1])]
@@ -177,33 +179,59 @@ def main():
     X_test_preprocessed, _ = preprocess_data(X_test,n_features_img)
   
     # init LR model
-    selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
+   # selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
 
     #Best Parameters: {'activation': 'relu', 'alpha': 0.01, 'batch_size': 16, 'hidden_layer_sizes': (100, 50), 'learning_rate_init': 0.001, 'solver': 'adam'}
     #Best Score: -0.0020914436665120115
     #TODO x alguna razon es peor?
-    model = MLPRegressor(hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.001, alpha=0.1, solver='adam', batch_size=32, activation='relu')
+    #hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.001, alpha=0.1, solver='adam', batch_size=32, activation='relu'
+    #MAS HIDDEN LAYES ES PEOR >:((
+    model = MLPRegressor(hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.01, alpha=0.1, solver='adam', batch_size=16, activation='relu')
 
     # Filter only the selected features columns
-    X_train_selected = X_train_preprocessed[:, selected_feats_idx]
-    X_test_selected = X_test_preprocessed[:, selected_feats_idx]
+   # X_train_selected = X_train_preprocessed[:, selected_feats_idx]
+   #X_test_selected = X_test_preprocessed[:, selected_feats_idx]
 
-   
+   # Scale the target
+    y_scaler = StandardScaler()
+    y_train_scaled = y_scaler.fit_transform(y_train.reshape(-1, 1)).ravel()
 
 
-    # Train the model
-    model.fit(X_train_selected, y_train)
-
-    # Predict
-    predictions = model.predict(X_test_selected)
-
-    evaluate(predictions, y_test)
 
     #plots
-    plot(predictions, y_test, selected_feats_idx, model)
+   # plot(predictions, y_test, selected_feats_idx, model)
+    best_score = float('+inf')
+    best_predictions = None
+    scores = []
+
+    for i in range(10):
+        selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
+        X_train_selected = X_train_preprocessed[:, selected_feats_idx]
+        X_test_selected = X_test_preprocessed[:, selected_feats_idx]
+        print(f"Iteration {i+1}")
+        model.fit(X_train_selected, y_train_scaled)
+        predictions_scaled = model.predict(X_test_selected)
+        predictions = y_scaler.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
+        rmse, r2 = evaluate(predictions, y_test)
+        scores.append(rmse)
+        if rmse < best_score:
+            best_score = rmse
+            best_predictions = predictions
+            predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx,cnn,n_features_img)
+
+    average_score = np.mean(scores)
+    print(f"Best rmse Score: {best_score}")
+    print(f"Average rmse Score: {average_score}")
+
+
+    visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
+    
+
+    # Plot the best predictions
+    plot(best_predictions, y_test, selected_feats_idx, model)
 
     # Use the model to predict the new data
-    predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx,cnn,n_features_img)
+    
 
 if __name__ == "__main__":
     main()

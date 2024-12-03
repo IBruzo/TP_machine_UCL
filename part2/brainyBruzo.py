@@ -138,21 +138,23 @@ def main():
     # init LR model
     selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
 
-    model = MLPRegressor(hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.001, alpha=0.1, solver='adam', batch_size=32, activation='relu')
+    model = MLPRegressor(hidden_layer_sizes=(100,50 ), max_iter=500, random_state=42, learning_rate_init=0.01, alpha=0.1, solver='adam', batch_size=16, activation='tanh')
 
     # Filter only the selected features columns
     X_train_selected = X_train_preprocessed[:, selected_feats_idx]
     X_test_selected = X_test_preprocessed[:, selected_feats_idx]
-
-   
-
+    # Scale the target
+    y_scaler = StandardScaler()
+    y_train_scaled = y_scaler.fit_transform(y_train.reshape(-1, 1)).ravel()
 
     # Train the model
-    model.fit(X_train_selected, y_train)
+    model.fit(X_train_selected, y_train_scaled)
 
     # Predict
-    predictions = model.predict(X_test_selected)
+    predictions_scaled = model.predict(X_test_selected)
 
+    # Unscale the predictions
+    predictions = y_scaler.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
     evaluate(predictions, y_test)
 
     #plots

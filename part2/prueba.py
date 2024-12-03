@@ -1,11 +1,11 @@
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import GridSearchCV
-
+from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import KFold
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'part1')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from TP_machine_UCL.part2.brainyBruzo import preprocess_data, load_data
 
 
@@ -35,7 +35,9 @@ kf= KFold(n_splits= 5)
 
 # Initialize GridSearchCV
 grid_search = GridSearchCV(estimator=mlp, param_grid=param_grid, cv=kf, scoring='neg_mean_squared_error', n_jobs=-1)
-grid_search.fit(X_train_preprocessed, y)
+y_scaler = StandardScaler()
+y_train_scaled = y_scaler.fit_transform(y.reshape(-1, 1)).ravel()
+grid_search.fit(X_train_preprocessed, y_train_scaled)
 
 # Output best parameters
 print("Best Parameters:", grid_search.best_params_)
