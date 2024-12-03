@@ -224,6 +224,8 @@ def main():
     print(f"Average rmse Score: {average_score}")
 
 
+
+
     visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
     
 
