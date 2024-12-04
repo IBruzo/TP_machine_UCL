@@ -15,7 +15,6 @@ from TP_machine_UCL.part3.clases import MyCNN, CustomDataset, SimpleCNN
 from TP_machine_UCL.part3.utils import visualize_dataset_tSNE
 
 
-
 # Transform text columns into useful digital tables
 def preprocess_data(X,n_features_img):
 
