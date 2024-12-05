@@ -104,7 +104,7 @@ def evaluate(predictions, y_test):
 
     return rmse, r2
 
-def plot(predictions, y_test, selected_feats_idx, model):
+def plot(predictions, y_test):
     plt.scatter(y_test, predictions)
     plt.xlabel("Actual Values")
     plt.ylabel("Predicted Values")
@@ -213,11 +213,11 @@ def main():
     n_runs = 10
 
     for i in range(n_runs):
+        print(f"Iteration {i+1}")
         selected_feats_idx, mi = prepare_model(X_train_preprocessed, y_train, feature_names)
         mi_scores.append(mi)
         X_train_selected = X_train_preprocessed[:, selected_feats_idx]
         X_test_selected = X_test_preprocessed[:, selected_feats_idx]
-        print(f"Iteration {i+1}")
         model.fit(X_train_selected, y_train_scaled)
         predictions_scaled = model.predict(X_test_selected)
         predictions = y_scaler.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
@@ -243,13 +243,13 @@ def main():
     plt.ylabel("Features")
     plt.tight_layout()
     plt.show()
-
+    # Plot the best predictions
+    plot(best_predictions, y_test)
 
     visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
     
 
-    # Plot the best predictions
-    plot(best_predictions, y_test, selected_feats_idx, model)
+
 
     # Use the model to predict the new data
     
