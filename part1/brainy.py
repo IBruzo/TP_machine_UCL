@@ -1,8 +1,6 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SequentialFeatureSelector
-from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -12,9 +10,15 @@ from sklearn.linear_model import LinearRegression
 
 def preprocess_data(X):
 
-    # Table for features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+      # Create BMI from height and weight
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  # Convert height to meters and compute BMI
     
+    # Remove height and weight columns
+    X = X.drop(columns=['height', 'weight'])
+    
+    # Updated list of numeric features
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI', 
+                        'sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     # Table for features with a score
     ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}

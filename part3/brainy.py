@@ -1,26 +1,31 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.neural_network import MLPRegressor
+import seaborn as sns
 
 import os
 import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from TP_machine_UCL.part3.clases import MyCNN, CustomDataset, SimpleCNN
+from TP_machine_UCL.part3.clases import MyCNN, CustomDataset
 from TP_machine_UCL.part3.utils import visualize_dataset_tSNE
 
 
 
 # Transform text columns into useful digital tables
 def preprocess_data(X,n_features_img):
+    # Create BMI from height and weight
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  # Convert height to meters and compute BMI
+    
+    # Remove height and weight columns
+    X = X.drop(columns=['height', 'weight'])
 
     # Table for features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin',  'potassium', 'vitamin D', 'BMI','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     # Add image features to numeric features
     for i in range(n_features_img):
         numeric_features.append(f'img_feat_{i+1}')
@@ -89,7 +94,7 @@ def prepare_model(X, y_train, feat_names):
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
     # Should n_features == len(selected_indices) == len(selected_features)?
-    return selected_indices
+    return selected_indices , mi
 
 def evaluate(predictions, y_test):
     rmse = compute_rmse(predictions, y_test)    # Lower the better
@@ -203,9 +208,13 @@ def main():
     best_score = float('+inf')
     best_predictions = None
     scores = []
+    mi_scores = []
 
-    for i in range(10):
-        selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
+    n_runs = 10
+
+    for i in range(n_runs):
+        selected_feats_idx, mi = prepare_model(X_train_preprocessed, y_train, feature_names)
+        mi_scores.append(mi)
         X_train_selected = X_train_preprocessed[:, selected_feats_idx]
         X_test_selected = X_test_preprocessed[:, selected_feats_idx]
         print(f"Iteration {i+1}")
@@ -222,6 +231,18 @@ def main():
     average_score = np.mean(scores)
     print(f"Best rmse Score: {best_score}")
     print(f"Average rmse Score: {average_score}")
+
+
+    sorted_scores = pd.Series(np.mean(mi_scores, axis=0), index=feature_names).sort_values(ascending=False)
+
+
+    plt.figure(figsize=(10, 6))
+    sns.barplot(x=sorted_scores.values, y=sorted_scores.index, palette="viridis")
+    plt.title("Average Mutual Information Scores")
+    plt.xlabel("Average Score")
+    plt.ylabel("Features")
+    plt.tight_layout()
+    plt.show()
 
 
     visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
