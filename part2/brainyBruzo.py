@@ -40,7 +40,6 @@ def preprocess_data(X):
     # Extract new feature names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
-    print(f"Preprocessed data shape: {feature_names}")
     
     return X_combined, feature_names
 
@@ -128,8 +127,22 @@ def exploratory_analysis(data, targets, feature_names):
     
     data_df['risk'] = targets
 
+    # Abbreviate feature names for readability
+    abbreviated_names = {
+        'age': 'Age', 'blood pressure': 'Blood pressure', 'calcium': 'Ca', 'cholesterol': 'Cholesterol', 
+        'hemoglobin': 'hemoglobin', 'potassium': 'K', 'vitamin D': 'Vitamin D', 'BMI': 'BMI',
+        'sarsaparilla': 'sarsaparilla', 'smurfberry liquor': 'SmurfLiquor', 'smurfin donuts': 'SmurfDonuts'
+    }
+    
+    # Abbreviate profession one-hot encoded feature names
+    for col in data_df.columns:
+        if col.startswith('profession_'):
+            abbreviated_names[col] = col.replace('profession_', 'Prof_')
+    
+    data_df = data_df.rename(columns=abbreviated_names)
+    
     # Correlation heatmap
-    plt.figure(figsize=(12, 10))  
+    plt.figure(figsize=(14, 12))  
     correlation_matrix = data_df.corr()  
     sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", 
                 annot_kws={"size": 10}, 
@@ -139,13 +152,13 @@ def exploratory_analysis(data, targets, feature_names):
 
     # Rotate x-axis and y-axis labels for better readability
     plt.xticks(rotation=45, ha="right")
-    plt.yticks(rotation=45, va="center")
+    plt.yticks( va="center")
     plt.title("Feature Correlation with Heart Failure Risk", fontsize=16)
-    plt.tight_layout()  # Adjust layout to prevent label overlap
+    plt.tight_layout(pad=2.0)  # Adjust layout to prevent label overlap
     plt.show()
 
     # Distribution of cholesterol by risk levels
-    sns.boxplot(x='risk', y='cholesterol', data=data_df)
+    sns.boxplot(x='risk', y='Cholesterol', data=data_df)
     plt.title("Cholesterol Levels by Risk (Log Scale)")
     plt.xticks(rotation=45, ha="right")  
     plt.show()
