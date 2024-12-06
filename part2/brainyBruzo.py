@@ -20,8 +20,7 @@ def preprocess_data(X):
     X = X.drop(columns=['height', 'weight'])
     
     # Updated list of numeric features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI', 
-                        'sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI']
     
     # Map ordinal features
     ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
@@ -44,6 +43,7 @@ def preprocess_data(X):
     # Extract new feature names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
+    print(f"Preprocessed data shape: {feature_names}")
     
     return X_combined, feature_names
 
@@ -53,11 +53,6 @@ def compute_rmse(predict, target):
     return np.sqrt((diff ** 2).sum() / len(target))
 
 
-def forward_feature_selection(model, X, y, n_features):
-    sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='forward', cv=5)
-    sfs.fit(X, y)
-    selected_indices = np.where(sfs.get_support())[0]
-    return selected_indices
 
 def load_data():
     # Load the data (adjust paths as needed)

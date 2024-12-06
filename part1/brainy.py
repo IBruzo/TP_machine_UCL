@@ -17,8 +17,7 @@ def preprocess_data(X):
     X = X.drop(columns=['height', 'weight'])
     
     # Updated list of numeric features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI', 
-                        'sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI']
     # Table for features with a score
     ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
     feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}

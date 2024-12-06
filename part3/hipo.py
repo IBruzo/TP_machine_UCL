@@ -17,9 +17,13 @@ from TP_machine_UCL.part3.utils import visualize_dataset_tSNE
 
 # Transform text columns into useful digital tables
 def preprocess_data(X,n_features_img):
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  # Convert height to meters and compute BMI
+    
+    # Remove height and weight columns
+    X = X.drop(columns=['height', 'weight'])
 
     # Table for features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'BMI', 'potassium', 'vitamin D']
     # Add image features to numeric features
     for i in range(n_features_img):
         numeric_features.append(f'img_feat_{i+1}')

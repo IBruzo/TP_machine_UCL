@@ -25,7 +25,7 @@ def preprocess_data(X,n_features_img):
     X = X.drop(columns=['height', 'weight'])
 
     # Table for features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin',  'potassium', 'vitamin D', 'BMI','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin',  'potassium', 'vitamin D', 'BMI']
     # Add image features to numeric features
     for i in range(n_features_img):
         numeric_features.append(f'img_feat_{i+1}')
@@ -206,6 +206,7 @@ def main():
     #plots
    # plot(predictions, y_test, selected_feats_idx, model)
     best_score = float('+inf')
+    best_r2_score = float('-inf')
     best_predictions = None
     scores = []
     mi_scores = []
@@ -223,13 +224,15 @@ def main():
         predictions = y_scaler.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
         rmse, r2 = evaluate(predictions, y_test)
         scores.append(rmse)
-        if rmse < best_score:
+        if rmse < best_score and r2 > best_r2_score:
             best_score = rmse
+            best_r2_score = r2
             best_predictions = predictions
             predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx,cnn,n_features_img)
 
     average_score = np.mean(scores)
     print(f"Best rmse Score: {best_score}")
+    print(f"Best r2 Score: {best_r2_score}")
     print(f"Average rmse Score: {average_score}")
 
 
