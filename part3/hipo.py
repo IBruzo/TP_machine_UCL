@@ -139,16 +139,12 @@ def predict(path_to_data, model, selected_feats_idx,cnn,n_features_img):
 
 
 def exploratory_analysis(data, targets, feature_names):
-    """
-    Perform exploratory data analysis (EDA) to identify potential causes of heart failure.
-    """
-    # Ensure targets is a 1D array
-    targets = pd.Series(targets.ravel(), name="risk")  # Flatten the targets array to 1D
+    
 
-    # Convert numpy array data to DataFrame
+    targets = pd.Series(targets.ravel(), name="risk")  # Flat
     data_df = pd.DataFrame(data, columns=feature_names)
 
-    # Check if the lengths match
+    # Check 
     if len(data_df) != len(targets):
         raise ValueError(f"Length mismatch: data has {len(data_df)} rows, but targets has {len(targets)} entries")
 
@@ -156,19 +152,19 @@ def exploratory_analysis(data, targets, feature_names):
     data_df['risk'] = targets
 
     # Correlation heatmap
-    plt.figure(figsize=(12, 10))  # Increase the figure size for better readability
+    plt.figure(figsize=(12, 10)) 
     correlation_matrix = data_df.corr()  # Compute correlation matrix
     sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", 
-                annot_kws={"size": 10},  # Increase font size of annotations
-                cbar_kws={'label': 'Correlation'},  # Label for the color bar
-                xticklabels=correlation_matrix.columns,  # Ensure proper labeling
-                yticklabels=correlation_matrix.columns)  # Ensure proper labeling
+                annot_kws={"size": 10},  
+                cbar_kws={'label': 'Correlation'},  
+                xticklabels=correlation_matrix.columns,  
+                yticklabels=correlation_matrix.columns)  
 
-    # Rotate x-axis and y-axis labels for better readability
+
     plt.xticks(rotation=45, ha="right")
     plt.yticks(rotation=45, va="center")
     plt.title("Feature Correlation with Heart Failure Risk", fontsize=16)
-    plt.tight_layout()  # Adjust layout to prevent label overlap
+    plt.tight_layout()
     plt.show()
 
     # Distribution of cholesterol by risk levels
@@ -176,12 +172,8 @@ def exploratory_analysis(data, targets, feature_names):
     plt.title("Cholesterol Levels by Risk")
     plt.show()
 
-    # Scatter plot: cholesterol vs. hemoglobin, color-coded by risk
-    sns.scatterplot(x='cholesterol', y='hemoglobin', hue='risk', data=data_df, palette="coolwarm")
-    plt.title("Cholesterol vs Hemoglobin by Risk")
-    plt.show()
 
-    # Feature importance visualization (using mutual information as an example)
+    # Feature importance visualization)
     feat_score = mutual_info(data_df.drop(columns=['risk']), targets)
     plt.barh(data_df.columns.drop('risk'), feat_score, color='blue')
     plt.xlabel("Mutual Information Score")
@@ -189,10 +181,8 @@ def exploratory_analysis(data, targets, feature_names):
     plt.show()
 
 def visualize_high_risk_images(X_test, y_test, predictions, top_n=10):
-    """
-    Visualize the top N high-risk images based on model predictions.
-    """
-    # Get indices of the top N highest predicted risks
+    
+
     sorted_indices = np.argsort(predictions)
     high_risk_indices = sorted_indices[-top_n:]
     low_risk_indices = sorted_indices[:top_n]
@@ -203,7 +193,7 @@ def visualize_high_risk_images(X_test, y_test, predictions, top_n=10):
     for i, idx in enumerate(high_risk_indices):
         img_filename = X_test.iloc[idx]["img_filename"]
         img_path = os.path.join(images_directory, img_filename)
-        img = plt.imread(img_path)  # Update the path to where images are stored
+        img = plt.imread(img_path) 
         plt.subplot(2, 5, i+1)
         plt.imshow(img)
         plt.title(f"Risk: {predictions[idx]:.4f}")
@@ -211,12 +201,12 @@ def visualize_high_risk_images(X_test, y_test, predictions, top_n=10):
     plt.tight_layout()
     plt.show()
 
-     # Plot the high-risk images
+     # Plot the low-risk images
     plt.figure(figsize=(12, 6))
     for i, idx in enumerate(low_risk_indices):
         img_filename = X_test.iloc[idx]["img_filename"]
         img_path = os.path.join(images_directory, img_filename)
-        img = plt.imread(img_path)  # Update the path to where images are stored
+        img = plt.imread(img_path)  
         plt.subplot(2, 5, i+1)
         plt.imshow(img)
         plt.title(f"Risk: {predictions[idx]:.4f}")
@@ -305,8 +295,6 @@ def main():
     #predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx,cnn,n_features_img)
 
     visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
-    
-
     
 
     # Plot the best predictions

@@ -19,7 +19,7 @@ from TP_machine_UCL.part3.utils import visualize_dataset_tSNE
 # Transform text columns into useful digital tables
 def preprocess_data(X,n_features_img):
     # Create BMI from height and weight
-    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  # Convert height to meters and compute BMI
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2) 
     
     # Remove height and weight columns
     X = X.drop(columns=['height', 'weight'])
@@ -86,14 +86,14 @@ def prepare_model(X, y_train, feat_names):
     X_train_preprocessed_df, mi, n_features = datafr_mutinfo_featsel(X, feat_names, y_train)
     print(f"Mutual Information Scores:\n {mi}\n")
 
-    # Filter out the features with mi = 0
+
     selected_features = mi[mi > 0.03].index.tolist()       
-    # for now we are selecting all features with mi > 0, but could be consider for optimization purposes a threshold of ~>0.03
+    
 
     print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
-    # Should n_features == len(selected_indices) == len(selected_features)?
+    
     return selected_indices , mi
 
 def evaluate(predictions, y_test):
@@ -183,19 +183,8 @@ def main():
     X_train_preprocessed, feature_names = preprocess_data(X_train,n_features_img)
     X_test_preprocessed, _ = preprocess_data(X_test,n_features_img)
   
-    # init LR model
-   # selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
 
-    #Best Parameters: {'activation': 'relu', 'alpha': 0.01, 'batch_size': 16, 'hidden_layer_sizes': (100, 50), 'learning_rate_init': 0.001, 'solver': 'adam'}
-    #Best Score: -0.0020914436665120115
-    #TODO x alguna razon es peor?
-    #hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.001, alpha=0.1, solver='adam', batch_size=32, activation='relu'
-    #MAS HIDDEN LAYES ES PEOR >:((
     model = MLPRegressor(hidden_layer_sizes=(100, ), max_iter=500, random_state=42, learning_rate_init=0.01, alpha=0.1, solver='adam', batch_size=16, activation='relu')
-
-    # Filter only the selected features columns
-   # X_train_selected = X_train_preprocessed[:, selected_feats_idx]
-   #X_test_selected = X_test_preprocessed[:, selected_feats_idx]
 
    # Scale the target
     y_scaler = StandardScaler()
@@ -252,9 +241,6 @@ def main():
     visualize_dataset_tSNE(dataset_train, extract_features=True, feature_extractor=cnn)
     
 
-
-
-    # Use the model to predict the new data
     
 
 if __name__ == "__main__":

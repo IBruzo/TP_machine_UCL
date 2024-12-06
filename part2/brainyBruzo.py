@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-from sklearn.feature_selection import SequentialFeatureSelector
 from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
@@ -10,11 +9,9 @@ from sklearn.neural_network import MLPRegressor
 import seaborn as sns
 
 
-
-# Transform text columns into useful digital tables
 def preprocess_data(X):
     # Create BMI from height and weight
-    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  # Convert height to meters and compute BMI
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  
     
     # Remove height and weight columns
     X = X.drop(columns=['height', 'weight'])
@@ -83,7 +80,7 @@ def prepare_model(X, y_train, feat_names):
     print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
-    # Should n_features == len(selected_indices) == len(selected_features)?
+
     return selected_indices
 
 def evaluate(predictions, y_test):
@@ -120,27 +117,25 @@ def predict(path_to_data, model, selected_feats_idx):
 
 def exploratory_analysis(data, targets, feature_names):
    
-    # Ensure targets is a 1D array
-    targets = pd.Series(targets.ravel(), name="risk")  # Flatten the targets array to 1D
-
-    # Convert numpy array data to DataFrame
+    
+    targets = pd.Series(targets.ravel(), name="risk")  # Flatten 
     data_df = pd.DataFrame(data, columns=feature_names)
 
     # Check if the lengths match
     if len(data_df) != len(targets):
         raise ValueError(f"Length mismatch: data has {len(data_df)} rows, but targets has {len(targets)} entries")
 
-    # Add the target column to the DataFrame
+    
     data_df['risk'] = targets
 
     # Correlation heatmap
-    plt.figure(figsize=(12, 10))  # Increase the figure size for better readability
-    correlation_matrix = data_df.corr()  # Compute correlation matrix
+    plt.figure(figsize=(12, 10))  
+    correlation_matrix = data_df.corr()  
     sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", 
-                annot_kws={"size": 10},  # Increase font size of annotations
-                cbar_kws={'label': 'Correlation'},  # Label for the color bar
-                xticklabels=correlation_matrix.columns,  # Ensure proper labeling
-                yticklabels=correlation_matrix.columns)  # Ensure proper labeling
+                annot_kws={"size": 10}, 
+                cbar_kws={'label': 'Correlation'},  
+                xticklabels=correlation_matrix.columns,  
+                yticklabels=correlation_matrix.columns) 
 
     # Rotate x-axis and y-axis labels for better readability
     plt.xticks(rotation=45, ha="right")
@@ -152,15 +147,10 @@ def exploratory_analysis(data, targets, feature_names):
     # Distribution of cholesterol by risk levels
     sns.boxplot(x='risk', y='cholesterol', data=data_df)
     plt.title("Cholesterol Levels by Risk (Log Scale)")
-    plt.xticks(rotation=45, ha="right")  # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45, ha="right")  
     plt.show()
 
-    # Scatter plot: cholesterol vs. hemoglobin, color-coded by risk
-    sns.scatterplot(x='cholesterol', y='hemoglobin', hue='risk', data=data_df, palette="coolwarm")
-    plt.title("Cholesterol vs Hemoglobin by Risk")
-    plt.show()
-
-    # Feature importance visualization (using mutual information as an example)
+    # Feature importance visualization
     feat_score = mutual_info(data_df.drop(columns=['risk']), targets)
     plt.barh(data_df.columns.drop('risk'), feat_score, color='blue')
     plt.xlabel("Mutual Information Score")
