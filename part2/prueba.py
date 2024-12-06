@@ -6,7 +6,7 @@ from sklearn.model_selection import KFold
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
-from TP_machine_UCL.part2.brainyBruzo import preprocess_data, load_data
+from TP_machine_UCL.part2.brainy import preprocess_data, load_data
 
 
 # Generate synthetic data
