@@ -1,52 +1,47 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler,  LabelEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.feature_selection import SequentialFeatureSelector
+from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_regression as mutual_info
 from sklearn.metrics import r2_score
 import matplotlib.pyplot as plt
-from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.linear_model import LinearRegression
 from sklearn.neural_network import MLPRegressor
-from sklearn.model_selection import GridSearchCV
+import seaborn as sns
 
 
-
-# Transform text columns into useful digital tables
 def preprocess_data(X):
-
-    # Table for features
-    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'height', 'potassium', 'vitamin D', 'weight','sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
+    # Create BMI from height and weight
+    X['BMI'] = X['weight'] / ((X['height'] / 100) ** 2)  
     
-    # Table for features with a score
+    # Remove height and weight columns
+    X = X.drop(columns=['height', 'weight'])
+    
+    # Updated list of numeric features
+    numeric_features = ['age', 'blood pressure', 'calcium', 'cholesterol', 'hemoglobin', 'potassium', 'vitamin D', 'BMI']
+    
+    # Map ordinal features
     ordinal_features = ['sarsaparilla', 'smurfberry liquor', 'smurfin donuts']
-    feat_score = {"Very low":1, "Low":2, "Moderate":3, "High":4, "Very high":5}
+    feat_score = {"Very low": 1, "Low": 2, "Moderate": 3, "High": 4, "Very high": 5}
     for feature in ordinal_features:
         X[feature] = X[feature].map(feat_score)
-
-    # Table for professions
-    categorical_features = ['profession']
-    onehot_encoder = OneHotEncoder(sparse_output=False)  # Ensure dense output to easily combine later
-    X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
-
     
-    # Combine all features
-    X_combined = np.hstack([
-        X[numeric_features + ordinal_features].values,  
-        X_categorical_encoded 
-    ])
-
+    # One-hot encode categorical features
+    categorical_features = ['profession']
+    onehot_encoder = OneHotEncoder(sparse_output=False)
+    X_categorical_encoded = onehot_encoder.fit_transform(X[categorical_features])
+    
     # Normalize & scale the combined features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X_combined)
-
-    # Extract new professions column names
+    X_scaled = scaler.fit_transform(X[numeric_features + ordinal_features].values)
+    
+    # Combine scaled numeric/ordinal features with one-hot encoded categorical features
+    X_combined = np.hstack([X_scaled, X_categorical_encoded])
+    
+    # Extract new feature names
     encoded_feature_names = onehot_encoder.get_feature_names_out(categorical_features)
     feature_names = numeric_features + ordinal_features + list(encoded_feature_names)
-
-    return X_scaled, feature_names
+    
+    return X_combined, feature_names
 
 
 def compute_rmse(predict, target):
@@ -54,11 +49,6 @@ def compute_rmse(predict, target):
     return np.sqrt((diff ** 2).sum() / len(target))
 
 
-def forward_feature_selection(model, X, y, n_features):
-    sfs = SequentialFeatureSelector(model, n_features_to_select=n_features, direction='forward', cv=5)
-    sfs.fit(X, y)
-    selected_indices = np.where(sfs.get_support())[0]
-    return selected_indices
 
 def load_data():
     # Load the data (adjust paths as needed)
@@ -83,13 +73,13 @@ def prepare_model(X, y_train, feat_names):
     print(f"Mutual Information Scores:\n {mi}\n")
 
     # Filter out the features with mi = 0
-    selected_features = mi[mi > 0.05].index.tolist()       
+    selected_features = mi[mi > 0.0].index.tolist()       
     # for now we are selecting all features with mi > 0, but could be consider for optimization purposes a threshold of ~>0.03
 
     print(f"Selected Features:\t{len(selected_features)}\n\t{', '.join(selected_features)}\n")
     selected_indices = [feat_names.index(feature) for feature in selected_features]
 
-    # Should n_features == len(selected_indices) == len(selected_features)?
+
     return selected_indices
 
 def evaluate(predictions, y_test):
@@ -124,6 +114,62 @@ def predict(path_to_data, model, selected_feats_idx):
     pd.DataFrame(new_predictions).to_csv(r'y_pred.csv', index=False, header=False, float_format='%.10f')
     print("Predictions written!", '\n')
 
+def exploratory_analysis(data, targets, feature_names):
+   
+    
+    targets = pd.Series(targets.ravel(), name="risk")  # Flatten 
+    data_df = pd.DataFrame(data, columns=feature_names)
+
+    # Check if the lengths match
+    if len(data_df) != len(targets):
+        raise ValueError(f"Length mismatch: data has {len(data_df)} rows, but targets has {len(targets)} entries")
+
+    
+    data_df['risk'] = targets
+
+    # Abbreviate feature names for readability
+    abbreviated_names = {
+        'age': 'Age', 'blood pressure': 'Blood pressure', 'calcium': 'Ca', 'cholesterol': 'Cholesterol', 
+        'hemoglobin': 'hemoglobin', 'potassium': 'K', 'vitamin D': 'Vitamin D', 'BMI': 'BMI',
+        'sarsaparilla': 'sarsaparilla', 'smurfberry liquor': 'SmurfLiquor', 'smurfin donuts': 'SmurfDonuts'
+    }
+    
+    # Abbreviate profession one-hot encoded feature names
+    for col in data_df.columns:
+        if col.startswith('profession_'):
+            abbreviated_names[col] = col.replace('profession_', 'Prof_')
+    
+    data_df = data_df.rename(columns=abbreviated_names)
+    
+    # Correlation heatmap
+    plt.figure(figsize=(14, 12))  
+    correlation_matrix = data_df.corr()  
+    sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", 
+                annot_kws={"size": 10}, 
+                cbar_kws={'label': 'Correlation'},  
+                xticklabels=correlation_matrix.columns,  
+                yticklabels=correlation_matrix.columns) 
+
+    # Rotate x-axis and y-axis labels for better readability
+    plt.xticks(rotation=45, ha="right")
+    plt.yticks( va="center")
+    plt.title("Feature Correlation with Heart Failure Risk", fontsize=16)
+    plt.tight_layout(pad=2.0)  # Adjust layout to prevent label overlap
+    plt.show()
+
+    # Distribution of cholesterol by risk levels
+    sns.boxplot(x='risk', y='Cholesterol', data=data_df)
+    plt.title("Cholesterol Levels by Risk (Log Scale)")
+    plt.xticks(rotation=45, ha="right")  
+    plt.show()
+
+    # Feature importance visualization
+    feat_score = mutual_info(data_df.drop(columns=['risk']), targets)
+    plt.barh(data_df.columns.drop('risk'), feat_score, color='blue')
+    plt.xlabel("Mutual Information Score")
+    plt.title("Feature Importance")
+    plt.show()
+
 
 def main():
     # Load the data (adjust paths as needed)
@@ -138,48 +184,36 @@ def main():
 
     X_train_preprocessed, feature_names = preprocess_data(X_train)
     X_test_preprocessed, _ = preprocess_data(X_test)
+
+    # Perform EDA
+    exploratory_analysis(X_train_preprocessed, y_train,feature_names)
   
     # init LR model
     selected_feats_idx = prepare_model(X_train_preprocessed, y_train, feature_names)
 
-    # Define parameter grid
-    param_grid = {
-        'hidden_layer_sizes': [(50,), (100,), (50, 25), (100, 50), (150, 100, 50)],
-        'activation': ['relu', 'tanh'],
-        'alpha': [0.0001, 0.001, 0.01],
-        'learning_rate': ['constant', 'adaptive'],
-        'learning_rate_init': [0.001, 0.005, 0.01],
-        'max_iter': [500],
-        'solver': ['adam'],
-        'batch_size': [16, 32, 64]
-    }
+    model = MLPRegressor(hidden_layer_sizes=(100,50 ), max_iter=500, random_state=42, learning_rate_init=0.01, alpha=0.1, solver='adam', batch_size=16, activation='tanh')
 
-    # Initialize MLPRegressor and GridSearchCV
-    model = MLPRegressor(random_state=0)
-    grid_search = GridSearchCV(model, param_grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1)
-    grid_search.fit(X_train_preprocessed, y_train)
-
-    # Output best parameters and score
-    print("Best parameters:", grid_search.best_params_)
-    print("Best RMSE:", (-grid_search.best_score_) ** 0.5)
-
-    model = MLPRegressor(random_state=0, **grid_search.best_params_)
-    
     # Filter only the selected features columns
     X_train_selected = X_train_preprocessed[:, selected_feats_idx]
     X_test_selected = X_test_preprocessed[:, selected_feats_idx]
+    # Scale the target
+    y_scaler = StandardScaler()
+    y_train_scaled = y_scaler.fit_transform(y_train.reshape(-1, 1)).ravel()
+
     
 
     # Train the model
-    model.fit(X_train_selected, y_train)
+    model.fit(X_train_selected, y_train_scaled)
 
     # Predict
-    predictions = model.predict(X_test_selected)
+    predictions_scaled = model.predict(X_test_selected)
 
+    # Unscale the predictions
+    predictions = y_scaler.inverse_transform(predictions_scaled.reshape(-1, 1)).ravel()
     evaluate(predictions, y_test)
 
     #plots
-    #plot(predictions, y_test, selected_feats_idx, model)
+    plot(predictions, y_test, selected_feats_idx, model)
 
     # Use the model to predict the new data
     predict(r'..\data_students\unlabeled_data\X.csv', model, selected_feats_idx)
